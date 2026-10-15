@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace ReaWin.Models;
 
 /// <summary>Facts read directly from a PE header; nothing here is executed or loaded.</summary>
@@ -47,11 +49,33 @@ public sealed record SegmentInfo(string Name, string Start, string End, long Len
 
 public sealed record ProcedureInfo(string Address, string Name)
 {
-    public bool IsImport => Address.StartsWith("EXTERNAL", StringComparison.OrdinalIgnoreCase);
-    public bool IsEntry => Name == "entry";
-    public bool IsAutoNamed => Name.StartsWith("FUN_", StringComparison.Ordinal);
-    public string Library => IsImport && Name.Contains("::") ? Name[..Name.IndexOf("::", StringComparison.Ordinal)] : "";
-    public string Kind => IsEntry ? "entry point" : IsImport ? "import" : IsAutoNamed ? "unnamed" : "named";
+    [JsonIgnore] public bool IsImport => Address.StartsWith("EXTERNAL", StringComparison.OrdinalIgnoreCase);
+    [JsonIgnore] public bool IsEntry => Name == "entry";
+    [JsonIgnore] public bool IsAutoNamed => Name.StartsWith("FUN_", StringComparison.Ordinal);
+    [JsonIgnore] public string Library => IsImport && Name.Contains("::") ? Name[..Name.IndexOf("::", StringComparison.Ordinal)] : "";
+    [JsonIgnore] public string Kind => IsEntry ? "entry point" : IsImport ? "import" : IsAutoNamed ? "unnamed" : "named";
+}
+
+/// <summary>One function's result from a batch decompile: pseudocode, or REA's reason it failed.</summary>
+public sealed record DecompiledFunction(string Address, string? Code, string? Error);
+
+/// <summary>
+/// Everything needed to show a finished analysis again without running Ghidra. Addresses and names are stored
+/// exactly as REA returned them so they can still be passed back to REA.
+/// </summary>
+public sealed record ProjectFile
+{
+    public int Version { get; init; } = 1;
+    public DateTime SavedUtc { get; init; } = DateTime.UtcNow;
+    public string TargetPath { get; init; } = "";
+    public string Root { get; init; } = "";
+    public OverviewResult Overview { get; init; } = null!;
+    public List<ProcedureInfo> Procedures { get; init; } = new();
+    public List<StringInfo> Strings { get; init; } = new();
+    /// <summary>Pseudocode by function address, as returned by REA.</summary>
+    public Dictionary<string, string> Decompiled { get; init; } = new();
+    /// <summary>REA's own error text for functions it could not decompile, by address.</summary>
+    public Dictionary<string, string> DecompileErrors { get; init; } = new();
 }
 
 public sealed record StringInfo(string Address, string Value);

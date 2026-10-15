@@ -12,8 +12,9 @@ public sealed class ReaException(string message, int exitCode) : Exception(messa
 }
 
 /// <summary>
-/// Runs the installed `rea` CLI as a child process and parses its JSON evidence.
-/// Each call is an independent Ghidra session: import and auto-analysis are repeated.
+/// Runs the installed `rea` CLI as a one-shot child process and parses its JSON evidence. Used for commands that
+/// do not need a Ghidra session (doctor, managed and JavaScript inspection); native analysis goes through
+/// <see cref="ReaSession"/>, which keeps one Ghidra session alive.
 /// </summary>
 public sealed class ReaClient(ReaSettings settings)
 {
@@ -40,29 +41,7 @@ public sealed class ReaClient(ReaSettings settings)
 
     public async Task<string> RunAsync(CancellationToken ct, IEnumerable<string> args)
     {
-        if (!File.Exists(settings.ReaScript))
-            throw new ReaException($"REA entry script not found: {settings.ReaScript}\nInstall with: npm install --global rea-agents", -1);
-
-        var psi = new ProcessStartInfo(settings.NodeExe)
-        {
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            RedirectStandardInput = true,
-            StandardOutputEncoding = Encoding.UTF8,
-            StandardErrorEncoding = Encoding.UTF8,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-        };
-        // ArgumentList passes each value as one argument, so paths with spaces or '&' are safe.
-        psi.ArgumentList.Add(settings.ReaScript);
-        foreach (var a in args) psi.ArgumentList.Add(a);
-
-        // Only REA's own configuration is set; the rest of the environment is inherited by the child.
-        if (!string.IsNullOrWhiteSpace(settings.GhidraInstallDir))
-            psi.Environment["GHIDRA_INSTALL_DIR"] = settings.GhidraInstallDir;
-        if (!string.IsNullOrWhiteSpace(settings.JavaHome))
-            psi.Environment["JAVA_HOME"] = settings.JavaHome;
-        psi.Environment["REA_ANALYSIS_PROVIDER"] = "ghidra";
+        var psi = CreateStartInfo(settings, args);
 
         using var process = new Process { StartInfo = psi };
         try { process.Start(); }
@@ -90,14 +69,47 @@ public sealed class ReaClient(ReaSettings settings)
         return output;
     }
 
-    public async Task<OverviewResult> AnalyzeAsync(string path, CancellationToken ct)
+    /// <summary>
+    /// Builds the child process for `node rea.mjs &lt;args&gt;`. Shared by one-shot calls and the MCP session so both
+    /// get the same environment and argument handling.
+    /// </summary>
+    internal static ProcessStartInfo CreateStartInfo(ReaSettings settings, IEnumerable<string> args)
     {
-        using var doc = await RunJsonAsync(ct, "analyze", path, "--provider", "ghidra");
-        var root = doc.RootElement;
+        if (!File.Exists(settings.ReaScript))
+            throw new ReaException($"REA entry script not found: {settings.ReaScript}\nInstall with: npm install --global rea-agents", -1);
+
+        var psi = new ProcessStartInfo(settings.NodeExe)
+        {
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            RedirectStandardInput = true,
+            StandardOutputEncoding = Encoding.UTF8,
+            StandardErrorEncoding = Encoding.UTF8,
+            // The MCP session sends file paths on stdin; the default is the OEM code page, which mangles non-ASCII names.
+            StandardInputEncoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+        // ArgumentList passes each value as one argument, so paths with spaces or '&' are safe.
+        psi.ArgumentList.Add(settings.ReaScript);
+        foreach (var a in args) psi.ArgumentList.Add(a);
+
+        // Only REA's own configuration is set; the rest of the environment is inherited by the child.
+        if (!string.IsNullOrWhiteSpace(settings.GhidraInstallDir))
+            psi.Environment["GHIDRA_INSTALL_DIR"] = settings.GhidraInstallDir;
+        if (!string.IsNullOrWhiteSpace(settings.JavaHome))
+            psi.Environment["JAVA_HOME"] = settings.JavaHome;
+        psi.Environment["REA_ANALYSIS_PROVIDER"] = "ghidra";
+        return psi;
+    }
+
+    /// <summary>Reads the overview evidence envelope (`analyze` and `binary_overview` share this shape).</summary>
+    internal static OverviewResult ParseOverview(JsonElement root)
+    {
         var subject = root.GetProperty("subject");
         var n = root.GetProperty("normalized_result");
         var segments = new List<SegmentInfo>();
-        if (n.TryGetProperty("segments", out var segs))
+        if (n.TryGetProperty("segments", out var segs) && segs.ValueKind == JsonValueKind.Array)
             foreach (var s in segs.EnumerateArray())
                 segments.Add(new SegmentInfo(Str(s, "name"), Str(s, "start"), Str(s, "end"),
                     s.TryGetProperty("length", out var l) && l.TryGetInt64(out var len) ? len : 0));
@@ -111,36 +123,20 @@ public sealed class ReaClient(ReaSettings settings)
             Int(n, "procedure_count"), Int(n, "string_count"), segments, limitations);
     }
 
-    public async Task<List<ProcedureInfo>> ListProceduresAsync(string path, CancellationToken ct)
-    {
-        using var doc = await RunJsonAsync(ct, "search", path, ".", "--kind", "procedures", "--mode", "regex", "--provider", "ghidra");
-        return Items(doc).Select(e => new ProcedureInfo(Str(e, "address"), Str(e, "value"))).ToList();
-    }
-
-    public async Task<List<StringInfo>> ListStringsAsync(string path, CancellationToken ct)
-    {
-        using var doc = await RunJsonAsync(ct, "search", path, ".", "--kind", "strings", "--mode", "regex", "--provider", "ghidra");
-        return Items(doc).Select(e => new StringInfo(Str(e, "address"), Str(e, "value"))).ToList();
-    }
-
-    public async Task<string> DecompileAsync(string path, string address, CancellationToken ct)
-    {
-        using var doc = await RunJsonAsync(ct, "decompile", path, address, "--provider", "ghidra");
-        var n = doc.RootElement.GetProperty("normalized_result");
-        return n.ValueKind == JsonValueKind.String ? n.GetString()! : n.GetRawText();
-    }
-
-    private static IEnumerable<JsonElement> Items(JsonDocument doc)
+    /// <summary>The `{address, value}` rows of a search/list evidence envelope; empty if the shape is unexpected.</summary>
+    internal static List<JsonElement> Items(JsonDocument doc)
     {
         var n = doc.RootElement.GetProperty("normalized_result");
         return n.ValueKind == JsonValueKind.Array ? n.EnumerateArray().ToList() : new List<JsonElement>();
     }
 
-    private static string Str(JsonElement e, string name) =>
-        e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() ?? "" : "";
+    internal static string Str(JsonElement e, string name) =>
+        e.ValueKind == JsonValueKind.Object && e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String
+            ? v.GetString() ?? ""
+            : "";
 
-    private static int Int(JsonElement e, string name) =>
-        e.TryGetProperty(name, out var v) && v.TryGetInt32(out var i) ? i : 0;
+    internal static int Int(JsonElement e, string name) =>
+        e.ValueKind == JsonValueKind.Object && e.TryGetProperty(name, out var v) && v.TryGetInt32(out var i) ? i : 0;
 
-    private static string Truncate(string s) => s.Length <= 4000 ? s : s[..4000] + "\n… (truncated)";
+    internal static string Truncate(string s) => s.Length <= 4000 ? s : s[..4000] + "\n… (truncated)";
 }

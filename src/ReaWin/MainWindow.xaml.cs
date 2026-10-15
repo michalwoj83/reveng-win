@@ -1,5 +1,5 @@
-using System.Collections.ObjectModel;
 using System.IO;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Windows;
@@ -15,20 +15,41 @@ public partial class MainWindow : Window
     private static readonly string SettingsPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ReaWin", "settings.json");
 
+    /// <summary>Functions per background batch. Small enough that a click never waits long behind one.</summary>
+    private const int BulkChunk = 10;
+
     private List<BinaryItem> _all = new();
     private List<ProcedureInfo> _procedures = new();
     private List<StringInfo> _strings = new();
     private string _root = "";
     private string? _analyzedPath;
+    private OverviewResult? _overview;
+    private string? _projectPath;
     private CancellationTokenSource? _cts;
     private ReaSettings _settings;
+
+    // One Ghidra session per analyzed binary. Decompiled code is cached by address as REA returned it.
+    private ReaSession? _session;
+    private Task<ReaSession?>? _sessionStart;
+    private readonly Dictionary<string, string> _decompiled = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, string> _decompileErrors = new(StringComparer.Ordinal);
+    private CancellationTokenSource? _bulkCts;
+    private Task _bulkTask = Task.CompletedTask;
+    private int _interactive;          // on-demand decompiles in flight; the background loop yields to them
+    private int _selectionVersion;     // lets a late answer be cached without overwriting a newer selection
 
     public MainWindow()
     {
         InitializeComponent();
         _settings = LoadSettings();
         ShowSettingsSummary();
-        Closing += (_, _) => { SaveSettings(); _cts?.Cancel(); };
+        Closing += (_, _) =>
+        {
+            SaveSettings();
+            _cts?.Cancel();
+            _bulkCts?.Cancel();
+            DisposeSession();
+        };
     }
 
     private void Settings_Click(object sender, RoutedEventArgs e)
@@ -154,48 +175,71 @@ public partial class MainWindow : Window
     private async Task AnalyzeAsync(BinaryItem item)
     {
         var path = item.Pe.FullPath;
-        var client = new ReaClient(CurrentSettings());
-        using var cts = BeginWork($"Running REA + Ghidra on {item.Name} (first run can take minutes)…");
+        await StopBackgroundWorkAsync();
+        DisposeSession();
+        ClearAnalysis();
+
+        using var cts = BeginWork($"Running REA + Ghidra on {item.Name}…");
         try
         {
             if (item.Pe.IsManaged)
             {
                 Log($"{item.Name} is a .NET assembly; Windows Ghidra support covers native PE only. Using managed inspection.");
+                var client = new ReaClient(CurrentSettings());
                 using var doc = await client.RunJsonAsync(cts.Token, "inspect-managed-artifact", path);
                 OverviewBox.Text = Pretty(doc);
-                _procedures = new(); _strings = new(); _analyzedPath = null;
-                FunctionsGrid.ItemsSource = null; StringsGrid.ItemsSource = null;
-                Tabs.SelectedItem = Tabs.Items[1];
+                Tabs.SelectedItem = OverviewTab;
                 StatusText.Text = "Managed inspection complete.";
                 return;
             }
 
-            // Three independent Ghidra sessions run in parallel; each imports and analyzes the file.
-            var overview = client.AnalyzeAsync(path, cts.Token);
-            var procs = client.ListProceduresAsync(path, cts.Token);
-            var strs = client.ListStringsAsync(path, cts.Token);
-            await Task.WhenAll(overview, procs, strs);
+            // One session: Ghidra imports and analyzes the file once (the slow part), then every query is fast.
+            var session = await ReaSession.OpenAsync(CurrentSettings(), path, cts.Token);
+            OverviewResult overview;
+            List<ProcedureInfo> procs;
+            List<StringInfo> strs;
+            try
+            {
+                StatusText.Text = $"Analyzing {item.Name} with Ghidra (done once; usually 1–3 minutes)…";
+                overview = await session.OverviewAsync(cts.Token);
+                StatusText.Text = "Reading functions and strings…";
+                var procsTask = session.ListProceduresAsync(cts.Token);
+                var strsTask = session.ListStringsAsync(cts.Token);
+                await Task.WhenAll(procsTask, strsTask);
+                procs = procsTask.Result;
+                strs = strsTask.Result;
+            }
+            catch
+            {
+                session.Dispose();
+                throw;
+            }
 
+            _session = session;
             _analyzedPath = path;
-            _procedures = procs.Result
+            _overview = overview;
+            _procedures = procs
                 .OrderByDescending(p => p.IsEntry).ThenBy(p => p.IsImport).ThenBy(p => p.IsAutoNamed).ThenBy(p => p.Address, StringComparer.Ordinal)
                 .ToList();
-            _strings = strs.Result;
-            OverviewBox.Text = FormatOverview(item, overview.Result, _procedures);
+            _strings = strs;
+            OverviewBox.Text = FormatOverview(item.Name, overview, _procedures);
             ApplyFunctionFilter();
             ApplyStringFilter();
-            Tabs.SelectedItem = Tabs.Items[1];
-            StatusText.Text = $"Done: {_procedures.Count(p => !p.IsImport)} functions, {_strings.Count} strings.";
+            SaveProjectButton.IsEnabled = true;
+            Tabs.SelectedItem = FunctionsTab;
+            StatusText.Text = $"Done: {_procedures.Count(p => !p.IsImport)} functions, {_strings.Count} strings. " +
+                              "Select a function to read its code.";
+            StartBulkDecompile(session);
         }
         catch (OperationCanceledException) { StatusText.Text = "Cancelled."; }
         catch (ReaException ex) { ShowFailure(ex); }
         finally { EndWork(); }
     }
 
-    private static string FormatOverview(BinaryItem item, OverviewResult o, List<ProcedureInfo> procedures)
+    private static string FormatOverview(string name, OverviewResult o, List<ProcedureInfo> procedures)
     {
         var sb = new StringBuilder();
-        sb.AppendLine($"File        {item.Name}");
+        sb.AppendLine($"File        {name}");
         sb.AppendLine($"SHA-256     {o.Sha256}");
         sb.AppendLine($"Format      {o.Format} / {o.Architecture}");
         sb.AppendLine($"Image base  {o.ImageBase}");
@@ -217,7 +261,7 @@ public partial class MainWindow : Window
         return sb.ToString();
     }
 
-    // ---- functions, strings, decompile ------------------------------------------------
+    // ---- functions, strings ----------------------------------------------------------------
 
     private void FuncFilter_Changed(object sender, TextChangedEventArgs e) => ApplyFunctionFilter();
     private void FuncFilter_Click(object sender, RoutedEventArgs e) => ApplyFunctionFilter();
@@ -244,30 +288,328 @@ public partial class MainWindow : Window
             .ToList();
     }
 
-    private async void Functions_DoubleClick(object sender, System.Windows.Input.MouseButtonEventArgs e) =>
-        await DecompileSelectedAsync();
+    // ---- decompile ------------------------------------------------------------------------------
 
-    private async void Decompile_Click(object sender, RoutedEventArgs e) => await DecompileSelectedAsync();
-
-    private async Task DecompileSelectedAsync()
+    private async void Functions_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (FunctionsGrid.SelectedItem is not ProcedureInfo proc || _analyzedPath is null) return;
+        if (FunctionsGrid.SelectedItem is ProcedureInfo proc) await ShowFunctionAsync(proc);
+    }
+
+    /// <summary>Shows one function's code: from the cache when present, otherwise one fast query to the session.</summary>
+    private async Task ShowFunctionAsync(ProcedureInfo proc)
+    {
+        var version = ++_selectionVersion;
+        CodeHeader.Text = $"{proc.Name}   @ {proc.Address}";
+
         if (proc.IsImport)
         {
-            StatusText.Text = "Imports are provided by another DLL and have no code in this file.";
+            CodeBox.Text = $"// {proc.Name} is an import. Its code is in another DLL, not in this file.";
             return;
         }
-        var client = new ReaClient(CurrentSettings());
-        using var cts = BeginWork($"Decompiling {proc.Name} at {proc.Address} (starts a new Ghidra session)…");
+        if (_decompiled.TryGetValue(proc.Address, out var cached))
+        {
+            CodeBox.Text = cached;
+            return;
+        }
+        if (_decompileErrors.TryGetValue(proc.Address, out var knownError))
+        {
+            CodeBox.Text = $"// REA could not decompile this function:\n// {knownError}";
+            return;
+        }
+
+        CodeBox.Text = _session is null
+            ? "// Starting Ghidra for this project (about as long as the first analysis)…"
+            : "// Decompiling…";
         try
         {
-            CodeBox.Text = await client.DecompileAsync(_analyzedPath, proc.Address, cts.Token);
-            Tabs.SelectedItem = Tabs.Items[4];
-            StatusText.Text = $"Decompiled {proc.Name}.";
+            var session = _session ?? await EnsureSessionAsync();
+            if (session is null) return;
+
+            _interactive++;
+            string code;
+            try { code = await session.DecompileAsync(proc.Address, CancellationToken.None); }
+            finally { _interactive--; }
+
+            _decompiled[proc.Address] = code;
+            if (version == _selectionVersion) CodeBox.Text = code;
         }
-        catch (OperationCanceledException) { StatusText.Text = "Cancelled."; }
-        catch (ReaException ex) { ShowFailure(ex); }
+        catch (ReaException ex)
+        {
+            _decompileErrors[proc.Address] = ex.Message;
+            Log($"Decompile {proc.Name} @ {proc.Address} failed:\n{ex.Message}");
+            if (version == _selectionVersion)
+                CodeBox.Text = $"// REA could not decompile this function (details in the Log tab):\n// {FirstLine(ex.Message)}";
+        }
+        catch (OperationCanceledException)
+        {
+            if (version == _selectionVersion) CodeBox.Text = "// Cancelled. Select the function again to retry.";
+        }
+    }
+
+    /// <summary>
+    /// Opens a Ghidra session for a project that was loaded from disk. Needed only for functions whose code was
+    /// not saved; everything else in the project is viewable without it.
+    /// </summary>
+    private Task<ReaSession?> EnsureSessionAsync()
+    {
+        if (_session is not null) return Task.FromResult<ReaSession?>(_session);
+        // Rapid clicks share one start; a finished start that gave no session (file missing) may be retried.
+        if (_sessionStart is null || _sessionStart.IsCompleted) _sessionStart = StartSessionAsync();
+        return _sessionStart;
+    }
+
+    private async Task<ReaSession?> StartSessionAsync()
+    {
+        var path = _analyzedPath;
+        if (path is null || !File.Exists(path))
+        {
+            CodeBox.Text = $"// The analyzed file is not available, so code that was not saved cannot be decompiled:\n// {path}";
+            return null;
+        }
+
+        using var cts = BeginWork($"Starting Ghidra for {Path.GetFileName(path)} (the saved project stays usable meanwhile)…");
+        try
+        {
+            var session = await ReaSession.OpenAsync(CurrentSettings(), path, cts.Token);
+            try { await session.OverviewAsync(cts.Token); }   // forces the one-time import and analysis
+            catch
+            {
+                session.Dispose();
+                throw;
+            }
+            _session = session;
+            StatusText.Text = "Ghidra is ready; functions now decompile on demand.";
+            StartBulkDecompile(session);   // fill in whatever the saved project did not contain
+            return session;
+        }
         finally { EndWork(); }
+    }
+
+    private void StartBulkDecompile(ReaSession session)
+    {
+        var todo = _procedures
+            .Where(p => !p.IsImport && !_decompiled.ContainsKey(p.Address) && !_decompileErrors.ContainsKey(p.Address))
+            .Select(p => p.Address)
+            .ToList();
+        if (todo.Count == 0) return;
+
+        _bulkCts = new CancellationTokenSource();
+        _bulkTask = RunBulkDecompileAsync(session, todo, _bulkCts.Token);
+    }
+
+    /// <summary>
+    /// Decompiles every program function in small batches while the user browses, so that selecting a function
+    /// is a cache hit and the saved project holds all the code. Cancellation is checked between batches only.
+    /// </summary>
+    private async Task RunBulkDecompileAsync(ReaSession session, List<string> todo, CancellationToken ct)
+    {
+        var total = todo.Count;
+        var done = 0;
+        BulkBar.Maximum = total;
+        BulkBar.Value = 0;
+        BulkText.Text = $"Decompiling 0/{total}";
+        BulkPanel.Visibility = Visibility.Visible;
+        CancelButton.IsEnabled = true;
+        try
+        {
+            for (var i = 0; i < total; i += BulkChunk)
+            {
+                ct.ThrowIfCancellationRequested();
+                while (_interactive > 0) await Task.Delay(15, ct);   // a click is waiting; let it go first
+
+                var part = todo.GetRange(i, Math.Min(BulkChunk, total - i));
+                var results = await session.DecompileBatchAsync(part, ct);
+                foreach (var r in results)
+                {
+                    if (r.Code is not null) _decompiled[r.Address] = r.Code;
+                    else if (r.Error is not null) _decompileErrors[r.Address] = r.Error;
+                }
+                done += part.Count;
+                BulkBar.Value = done;
+                BulkText.Text = $"Decompiling {done}/{total}";
+            }
+            StatusText.Text = $"All {total} functions are decompiled and cached. Save the project to reopen it without Ghidra.";
+        }
+        catch (OperationCanceledException)
+        {
+            StatusText.Text = $"Background decompile stopped at {done}/{total}. Other functions still decompile when selected.";
+        }
+        catch (ReaException ex) { ShowFailure(ex); }
+        finally
+        {
+            BulkPanel.Visibility = Visibility.Collapsed;
+            _bulkCts?.Dispose();
+            _bulkCts = null;
+            CancelButton.IsEnabled = _cts is not null;
+        }
+    }
+
+    private async Task StopBackgroundWorkAsync()
+    {
+        _bulkCts?.Cancel();
+        try { await _bulkTask; }
+        catch (OperationCanceledException) { }
+    }
+
+    private void DisposeSession()
+    {
+        _session?.Dispose();
+        _session = null;
+    }
+
+    /// <summary>Forgets the previous analysis so nothing from it can be clicked while a new one runs.</summary>
+    private void ClearAnalysis()
+    {
+        _analyzedPath = null;
+        _overview = null;
+        _projectPath = null;
+        _procedures = new();
+        _strings = new();
+        _decompiled.Clear();
+        _decompileErrors.Clear();
+        _selectionVersion++;
+        FunctionsGrid.ItemsSource = null;
+        StringsGrid.ItemsSource = null;
+        CodeBox.Text = "";
+        CodeHeader.Text = "Select a function to see its decompiled code.";
+        SaveProjectButton.IsEnabled = false;
+    }
+
+    private static string FirstLine(string text)
+    {
+        var end = text.IndexOf('\n');
+        var line = end < 0 ? text : text[..end];
+        return line.Length <= 300 ? line : line[..300] + "…";
+    }
+
+    // ---- projects ---------------------------------------------------------------------------------
+
+    private async void SaveProject_Click(object sender, RoutedEventArgs e)
+    {
+        if (_analyzedPath is null || _overview is null) return;
+
+        var dialog = new SaveFileDialog
+        {
+            Title = "Save REA project",
+            Filter = $"REA project (*{ProjectStore.Extension})|*{ProjectStore.Extension}",
+            DefaultExt = ProjectStore.Extension,
+            FileName = _projectPath is null
+                ? Path.GetFileNameWithoutExtension(_analyzedPath) + ProjectStore.Extension
+                : Path.GetFileName(_projectPath),
+            InitialDirectory = _projectPath is null ? null : Path.GetDirectoryName(_projectPath),
+        };
+        if (dialog.ShowDialog(this) != true) return;
+
+        // Copy on the UI thread (the background decompile mutates these); serialize and write off it.
+        var project = new ProjectFile
+        {
+            TargetPath = _analyzedPath,
+            Root = _root,
+            Overview = _overview,
+            Procedures = _procedures.ToList(),
+            Strings = _strings.ToList(),
+            Decompiled = new Dictionary<string, string>(_decompiled),
+            DecompileErrors = new Dictionary<string, string>(_decompileErrors),
+        };
+        var totalFunctions = _procedures.Count(p => !p.IsImport);
+        var target = dialog.FileName;
+
+        SaveProjectButton.IsEnabled = false;
+        StatusText.Text = "Saving project…";
+        try
+        {
+            await Task.Run(() => ProjectStore.SaveAsync(target, project));
+            _projectPath = target;
+            var size = new FileInfo(target).Length / 1_048_576.0;
+            StatusText.Text = $"Saved {target} ({size:0.0} MB, code for {project.Decompiled.Count} of {totalFunctions} functions).";
+        }
+        catch (ReaException ex) { ShowFailure(ex); }
+        finally { SaveProjectButton.IsEnabled = _analyzedPath is not null; }
+    }
+
+    private async void OpenProject_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new OpenFileDialog
+        {
+            Title = "Open REA project",
+            Filter = $"REA project (*{ProjectStore.Extension})|*{ProjectStore.Extension}|All files|*.*",
+        };
+        if (dialog.ShowDialog(this) != true) return;
+
+        await StopBackgroundWorkAsync();
+        DisposeSession();
+
+        ProjectFile project;
+        using (var cts = BeginWork("Opening project…"))
+        {
+            try
+            {
+                var file = dialog.FileName;
+                project = await Task.Run(() => ProjectStore.LoadAsync(file, cts.Token), cts.Token);
+            }
+            catch (OperationCanceledException) { StatusText.Text = "Cancelled."; EndWork(); return; }
+            catch (ReaException ex) { ShowFailure(ex); EndWork(); return; }
+
+            ClearAnalysis();
+            _analyzedPath = project.TargetPath;
+            _overview = project.Overview;
+            _projectPath = dialog.FileName;
+            _root = project.Root;
+            FolderBox.Text = _root;
+            _procedures = project.Procedures;
+            _strings = project.Strings;
+            foreach (var (address, code) in project.Decompiled) _decompiled[address] = code;
+            foreach (var (address, error) in project.DecompileErrors) _decompileErrors[address] = error;
+
+            OverviewBox.Text = FormatOverview(Path.GetFileName(project.TargetPath), project.Overview, _procedures);
+            ApplyFunctionFilter();
+            ApplyStringFilter();
+            SaveProjectButton.IsEnabled = true;
+            Tabs.SelectedItem = FunctionsTab;
+            EndWork();
+        }
+
+        var functions = _procedures.Count(p => !p.IsImport);
+        var missing = functions - _decompiled.Count - _decompileErrors.Count;
+        var status = $"Project opened: {functions} functions, {_strings.Count} strings, code saved for {_decompiled.Count}.";
+        if (missing > 0)
+            status += $" {missing} functions were not decompiled when it was saved; selecting one starts Ghidra.";
+
+        // Refresh the binaries list if the folder is still there; the project itself does not depend on it.
+        if (Directory.Exists(_root))
+        {
+            await ScanAsync();
+            var match = _all.FirstOrDefault(i => string.Equals(i.Pe.FullPath, _analyzedPath, StringComparison.OrdinalIgnoreCase));
+            if (match is not null) BinariesGrid.SelectedItem = match;
+        }
+        StatusText.Text = status;
+
+        await WarnIfTargetChangedAsync(project);
+    }
+
+    /// <summary>On-demand decompiles analyze the file on disk, so tell the user when it is not the file in the project.</summary>
+    private async Task WarnIfTargetChangedAsync(ProjectFile project)
+    {
+        var path = project.TargetPath;
+        if (!File.Exists(path))
+        {
+            Log($"The analyzed file is not at its saved location: {path}. Saved code is shown; new decompiles are not possible.");
+            return;
+        }
+        string sha;
+        try
+        {
+            sha = await Task.Run(async () =>
+            {
+                await using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, 1 << 16, useAsync: true);
+                return Convert.ToHexString(await SHA256.HashDataAsync(stream));
+            });
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return; }
+
+        if (!string.Equals(sha, project.Overview.Sha256, StringComparison.OrdinalIgnoreCase))
+            Log($"Warning: {path} has changed since this project was saved (SHA-256 differs). " +
+                "Saved code describes the old file; functions that are decompiled now come from the new one.");
     }
 
     // ---- JavaScript / Electron ----------------------------------------------------------
@@ -280,7 +622,7 @@ public partial class MainWindow : Window
         {
             using var doc = await client.RunJsonAsync(cts.Token, "analyze-javascript-application", _root);
             OverviewBox.Text = Pretty(doc);
-            Tabs.SelectedItem = Tabs.Items[1];
+            Tabs.SelectedItem = OverviewTab;
             StatusText.Text = "JavaScript analysis complete (raw evidence shown in Overview).";
         }
         catch (OperationCanceledException) { StatusText.Text = "Cancelled."; }
@@ -307,7 +649,7 @@ public partial class MainWindow : Window
                 sb.AppendLine($"  [{(ok ? "ok" : "FAIL")}] {name}: {detail}");
             }
             Log(sb.ToString());
-            Tabs.SelectedItem = Tabs.Items[5];
+            Tabs.SelectedItem = LogTab;
             StatusText.Text = "Doctor finished; see Log.";
         }
         catch (OperationCanceledException) { StatusText.Text = "Cancelled."; }
@@ -317,7 +659,11 @@ public partial class MainWindow : Window
 
     // ---- plumbing -----------------------------------------------------------------------------
 
-    private void Cancel_Click(object sender, RoutedEventArgs e) => _cts?.Cancel();
+    private void Cancel_Click(object sender, RoutedEventArgs e)
+    {
+        _cts?.Cancel();
+        _bulkCts?.Cancel();
+    }
 
     private CancellationTokenSource BeginWork(string status)
     {
@@ -325,6 +671,7 @@ public partial class MainWindow : Window
         StatusText.Text = status;
         Busy.Visibility = Visibility.Visible;
         BrowseButton.IsEnabled = RescanButton.IsEnabled = AnalyzeButton.IsEnabled = AnalyzeRecommendedButton.IsEnabled = false;
+        OpenProjectButton.IsEnabled = SaveProjectButton.IsEnabled = false;
         CancelButton.IsEnabled = true;
         return _cts;
     }
@@ -334,15 +681,17 @@ public partial class MainWindow : Window
         _cts = null;
         Busy.Visibility = Visibility.Collapsed;
         BrowseButton.IsEnabled = true;
+        OpenProjectButton.IsEnabled = true;
+        SaveProjectButton.IsEnabled = _analyzedPath is not null;
         RescanButton.IsEnabled = !string.IsNullOrEmpty(_root);
-        CancelButton.IsEnabled = false;
+        CancelButton.IsEnabled = _bulkCts is not null;   // the background decompile can still be stopped
         Binaries_SelectionChanged(this, null!);
     }
 
     private void ShowFailure(ReaException ex)
     {
         Log($"REA failed (exit {ex.ExitCode}):\n{ex.Message}");
-        Tabs.SelectedItem = Tabs.Items[5];
+        Tabs.SelectedItem = LogTab;
         StatusText.Text = "REA reported an error; see Log. Try \"Run rea doctor\" in settings.";
     }
 

@@ -20,6 +20,8 @@
         <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,8,0,0">
             <Button Content="Settings…" Padding="12,3" Click="Settings_Click" />
             <Button Content="Run rea doctor" Padding="12,3" Margin="8,0,0,0" Click="Doctor_Click" />
+            <Button x:Name="OpenProjectButton" Content="Open project…" Padding="12,3" Margin="20,0,0,0" Click="OpenProject_Click" />
+            <Button x:Name="SaveProjectButton" Content="Save project…" Padding="12,3" Margin="8,0,0,0" Click="SaveProject_Click" IsEnabled="False" />
             <TextBlock x:Name="SettingsSummary" Margin="12,0,0,0" VerticalAlignment="Center" Foreground="Gray" />
         </StackPanel>
 
@@ -89,27 +91,43 @@
                         <TextBox x:Name="WhyBox" IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"
                                  Padding="8" BorderThickness="0" />
                     </TabItem>
-                    <TabItem Header="Overview">
+                    <TabItem x:Name="OverviewTab" Header="Overview">
                         <TextBox x:Name="OverviewBox" IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"
                                  FontFamily="Consolas" Padding="8" BorderThickness="0" />
                     </TabItem>
-                    <TabItem Header="Functions">
+                    <TabItem x:Name="FunctionsTab" Header="Functions">
                         <DockPanel>
                             <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,6">
                                 <TextBlock Text="Filter:" VerticalAlignment="Center" />
                                 <TextBox x:Name="FuncFilterBox" Width="200" Margin="6,0" TextChanged="FuncFilter_Changed" />
                                 <CheckBox x:Name="InternalOnlyBox" Content="Program functions only" IsChecked="True"
                                           VerticalAlignment="Center" Click="FuncFilter_Click" />
-                                <Button Content="Decompile selected" Margin="12,0,0,0" Padding="10,3" Click="Decompile_Click" />
                             </StackPanel>
-                            <DataGrid x:Name="FunctionsGrid" AutoGenerateColumns="False" IsReadOnly="True" SelectionMode="Single"
-                                      MouseDoubleClick="Functions_DoubleClick">
-                                <DataGrid.Columns>
-                                    <DataGridTextColumn Header="Address" Binding="{Binding Address}" Width="130" />
-                                    <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="*" />
-                                    <DataGridTextColumn Header="Kind" Binding="{Binding Kind}" Width="100" />
-                                </DataGrid.Columns>
-                            </DataGrid>
+                            <!-- Select a function and its code appears beside the list. -->
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="4*" MinWidth="200" />
+                                    <ColumnDefinition Width="6" />
+                                    <ColumnDefinition Width="6*" MinWidth="200" />
+                                </Grid.ColumnDefinitions>
+                                <DataGrid Grid.Column="0" x:Name="FunctionsGrid" AutoGenerateColumns="False" IsReadOnly="True"
+                                          SelectionMode="Single" VirtualizingPanel.VirtualizationMode="Recycling"
+                                          SelectionChanged="Functions_SelectionChanged">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="Address" Binding="{Binding Address}" Width="110" />
+                                        <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="*" />
+                                        <DataGridTextColumn Header="Kind" Binding="{Binding Kind}" Width="80" />
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                                <GridSplitter Grid.Column="1" HorizontalAlignment="Stretch" />
+                                <DockPanel Grid.Column="2">
+                                    <TextBlock x:Name="CodeHeader" DockPanel.Dock="Top" FontWeight="SemiBold" Margin="6,2,0,4"
+                                               Text="Select a function to see its decompiled code." />
+                                    <TextBox x:Name="CodeBox" IsReadOnly="True" IsUndoEnabled="False" FontFamily="Consolas"
+                                             AcceptsReturn="True" HorizontalScrollBarVisibility="Auto"
+                                             VerticalScrollBarVisibility="Auto" Padding="8" BorderThickness="0" />
+                                </DockPanel>
+                            </Grid>
                         </DockPanel>
                     </TabItem>
                     <TabItem Header="Strings">
@@ -126,11 +144,7 @@
                             </DataGrid>
                         </DockPanel>
                     </TabItem>
-                    <TabItem Header="Decompiled">
-                        <TextBox x:Name="CodeBox" IsReadOnly="True" FontFamily="Consolas" AcceptsReturn="True"
-                                 HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" Padding="8" BorderThickness="0" />
-                    </TabItem>
-                    <TabItem Header="Log">
+                    <TabItem x:Name="LogTab" Header="Log">
                         <TextBox x:Name="LogBox" IsReadOnly="True" FontFamily="Consolas" TextWrapping="Wrap"
                                  VerticalScrollBarVisibility="Auto" Padding="8" BorderThickness="0" />
                     </TabItem>
@@ -143,7 +157,13 @@
                 <TextBlock x:Name="StatusText" Text="Select an application folder to begin." />
             </StatusBarItem>
             <StatusBarItem HorizontalAlignment="Right">
-                <ProgressBar x:Name="Busy" Width="160" Height="12" IsIndeterminate="True" Visibility="Collapsed" />
+                <StackPanel Orientation="Horizontal">
+                    <StackPanel x:Name="BulkPanel" Orientation="Horizontal" Visibility="Collapsed" Margin="0,0,12,0">
+                        <TextBlock x:Name="BulkText" VerticalAlignment="Center" Margin="0,0,6,0" />
+                        <ProgressBar x:Name="BulkBar" Width="120" Height="12" />
+                    </StackPanel>
+                    <ProgressBar x:Name="Busy" Width="160" Height="12" IsIndeterminate="True" Visibility="Collapsed" />
+                </StackPanel>
             </StatusBarItem>
         </StatusBar>
     </Grid>

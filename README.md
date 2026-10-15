@@ -53,17 +53,33 @@ Special cases:
 
 ## What the UI shows from REA
 
-| Tab | REA command | Content |
+| Tab | REA MCP tool | Content |
 |---|---|---|
-| Overview | `analyze` | format, architecture, image base, SHA-256, sections, counts, imported libraries, limitations |
-| Functions | `search --kind procedures` | program functions and imports, Ghidra's `entry` marked |
-| Strings | `search --kind strings` | every Ghidra-defined string with address |
-| Decompiled | `decompile <address>` | C-like pseudocode for the selected function |
+| Overview | `binary_overview` | format, architecture, image base, SHA-256, sections, counts, imported libraries, limitations |
+| Functions | `list_procedures`, `procedure_pseudo_code`, `batch_decompile` | program functions and imports, Ghidra's `entry` marked; the decompiled code of the selected function appears beside the list |
+| Strings | `list_strings` | every Ghidra-defined string with address |
+
+## Speed and sessions
+
+Native analysis runs through one long-lived `rea --mcp` session per binary. Ghidra imports and analyzes the file
+once (about 2.5 minutes for a 2.4 MB executable); after that the function and string lists take well under a
+second and a single function decompiles in tens of milliseconds. Right after the analysis the app decompiles
+every program function in the background (progress is shown in the status bar), so selecting a function is
+normally an instant cache hit. *Cancel* stops the background work between batches.
+
+## Projects
+
+*Save project…* writes a `.reaproj` file (gzip-compressed JSON) with the overview, function list, strings and all
+decompiled code so far. *Open project…* shows it again in well under a second, with no Ghidra involved.
+Ghidra is started again only if you select a function whose code was not saved, and then only for that file.
+A project is created only when you save one; the app does not write analysis output anywhere else.
+If the analyzed file has changed since the project was saved, the Log tab says so.
 
 ## Known limitations
 
-- Each REA call is its own Ghidra session (import and auto-analysis repeat), so decompiling a function
-  takes tens of seconds. A long-lived `rea mcp` session would avoid this and is the natural next step.
+- The first analysis of a binary is slow, because Ghidra's auto-analysis is. REA's own `--snapshot` does not
+  avoid it on reopen (it still re-imports), which is why the app saves its own project file.
+- REA does not offer a per-request timeout; a single very large binary can still hit REA's 330 s call limit.
 - Ghidra's `entry` is the PE entry point (the C runtime start), not `main`.
 - Windows P0 is read-only: no renaming or annotating from the UI.
 - The scan follows no symlinks or junctions.

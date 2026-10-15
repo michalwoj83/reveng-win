@@ -15,7 +15,12 @@ src/ReaWin/
   MainWindow.xaml(.cs)      UI and orchestration (code-behind, no MVVM framework)
   Services/PeScanner.cs     enumerate exe/dll, read PE headers (never loads or runs files)
   Services/EntryRanker.cs   score binaries, produce human-readable reasons
-  Services/ReaClient.cs     run `node rea.mjs <cmd> --format json`, parse evidence
+  Services/ReaClient.cs     run `node rea.mjs <cmd> --format json`, parse evidence (one-shot commands)
+  Services/ReaSession.cs    long-lived `rea --mcp` session: analyze once, then fast queries and decompiles
+  Services/ProjectStore.cs  save/open `.reaproj` files (gzip JSON) so a finished analysis can be reopened
+  Services/JavaLocator.cs   find installed JDKs from registry/folders/PATH (reads `release`, never runs java)
+  Services/GhidraLocator.cs validate a Ghidra release folder by file layout
+  SettingsWindow.xaml(.cs)  pick the Ghidra folder and a JDK 21+
   Models/Models.cs          records shared across layers
 ```
 
@@ -39,13 +44,22 @@ to check them. There is no automated test project yet. Verify changes by buildin
 
 - Pass arguments through `ProcessStartInfo.ArgumentList`. Never build a command line string, and never go through `cmd.exe`.
 - Set only `GHIDRA_INSTALL_DIR`, `JAVA_HOME` and `REA_ANALYSIS_PROVIDER` on the child. Do not write to the user's environment.
-- Commands in use: `analyze`, `search --kind procedures|strings --mode regex`, `decompile <address>`,
-  `analyze-javascript-application`, `inspect-managed-artifact`, `doctor`.
-- To discover options for a command, run `rea <command> --help` or `rea <command> --schema`. Prefer that to guessing.
-- Output is an evidence envelope: `evidence_id`, `subject`, `normalized_result`, `limitations`. `search` returns an array
-  of `{address, value}`; `decompile` returns a string. Parse with `System.Text.Json` and tolerate missing fields.
-- Each call is its own Ghidra session (about 35 s for a small file). Run independent calls in parallel, and do not
-  call REA from UI event handlers without `BeginWork`/`EndWork` and a `CancellationToken`.
+- One-shot CLI commands (`ReaClient`): `analyze-javascript-application`, `inspect-managed-artifact`, `doctor`.
+- Native analysis uses one long-lived `node rea.mjs --mcp` server per binary (`ReaSession`, JSON-RPC over stdio).
+  Tools in use: `open_binary`, `binary_overview`, `list_procedures`, `list_strings`, `procedure_pseudo_code`,
+  `batch_decompile`, `close_binary`. List tools with `tools/list`; do not guess argument names.
+- To discover options for a CLI command, run `rea <command> --help` or `rea <command> --schema`.
+- Output is an evidence envelope: `evidence_id`, `subject`, `normalized_result`, `limitations`. Lists return an array
+  of `{address, value}`; `procedure_pseudo_code` returns a string; `batch_decompile` returns `items`. Parse with
+  `System.Text.Json` and tolerate missing fields. Provider errors arrive as `{"error": {...}}` inside a normal result.
+- The first query on a session runs Ghidra's import and auto-analysis (minutes for a 2 MB file); later queries take
+  milliseconds. Never cancel an in-flight request on the server: REA then discards the database and re-imports on
+  the next query. Abandon the wait instead (`ReaSession` does this), and stop background work between batches.
+- Do not run several Ghidra *sessions* for one file in parallel; they compete for CPU and one hits REA's 330 s
+  per-call timeout. Overlapping requests inside one session are fine.
+- Long operations go through `BeginWork`/`EndWork` with a `CancellationToken`. The one exception is the per-click
+  decompile of a single function, which is a millisecond cache lookup and must not lock the UI.
+- REA's `--snapshot` / `snapshot_path` does not skip re-analysis on reopen. The app's own `.reaproj` project file does.
 
 ## Things the REA contract requires
 
@@ -56,7 +70,8 @@ to check them. There is no automated test project yet. Verify changes by buildin
   managed inspection; Electron goes to JavaScript analysis. Do not add rename/annotate features for Windows.
 - Preserve source values: show addresses and names exactly as REA returns them (`EXTERNAL:0x5`, `DLL::API`).
   Do not normalize them if they will be used to call REA again.
-- Do not guess that data is secret. Do not log or persist anything beyond the user's settings.
+- Do not guess that data is secret. Do not log anything, and persist nothing except the user's settings and a
+  `.reaproj` project file that the user explicitly saves (overview, functions, strings, decompiled code).
 
 ## Conventions
 
@@ -78,7 +93,6 @@ to check them. There is no automated test project yet. Verify changes by buildin
 5. Update `README.md` (tabs table and limitations) when behavior changes.
 
 Good next features:
-- Persistent `rea mcp` session so decompiles do not re-import the file.
 - Find `main` or the WinMain-like function from the entry's callees.
 - Cross-reference view (`trace`, `function` commands) and call graph.
 - Compare two application versions (`compare` commands).
