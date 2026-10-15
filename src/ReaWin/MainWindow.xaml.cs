@@ -21,15 +21,34 @@ public partial class MainWindow : Window
     private string _root = "";
     private string? _analyzedPath;
     private CancellationTokenSource? _cts;
+    private ReaSettings _settings;
 
     public MainWindow()
     {
         InitializeComponent();
-        var s = LoadSettings();
-        GhidraBox.Text = s.GhidraInstallDir;
-        JavaBox.Text = s.JavaHome;
-        ReaBox.Text = s.ReaScript;
+        _settings = LoadSettings();
+        ShowSettingsSummary();
         Closing += (_, _) => { SaveSettings(); _cts?.Cancel(); };
+    }
+
+    private void Settings_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new SettingsWindow(_settings) { Owner = this };
+        if (dialog.ShowDialog() != true) return;
+        _settings = dialog.Result;
+        SaveSettings();
+        ShowSettingsSummary();
+    }
+
+    private void ShowSettingsSummary()
+    {
+        var ghidra = string.IsNullOrWhiteSpace(_settings.GhidraInstallDir) ? "not set" : _settings.GhidraInstallDir;
+        var java = string.IsNullOrWhiteSpace(_settings.JavaHome) ? "not set" : _settings.JavaHome;
+        SettingsSummary.Text = $"Ghidra: {ghidra}   |   Java: {java}";
+        SettingsSummary.Foreground = string.IsNullOrWhiteSpace(_settings.GhidraInstallDir) ||
+                                     string.IsNullOrWhiteSpace(_settings.JavaHome)
+            ? System.Windows.Media.Brushes.Firebrick
+            : System.Windows.Media.Brushes.Gray;
     }
 
     // ---- 1. choose a directory -------------------------------------------------
@@ -336,8 +355,7 @@ public partial class MainWindow : Window
         return text.Length <= 200_000 ? text : text[..200_000] + "\n… (truncated for display)";
     }
 
-    private ReaSettings CurrentSettings() =>
-        new(GhidraBox.Text.Trim(), JavaBox.Text.Trim(), ReaBox.Text.Trim(), "node");
+    private ReaSettings CurrentSettings() => _settings;
 
     private static ReaSettings LoadSettings()
     {

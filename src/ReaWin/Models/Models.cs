@@ -68,3 +68,28 @@ public sealed record OverviewResult(
     IReadOnlyList<string> Limitations);
 
 public sealed record ReaSettings(string GhidraInstallDir, string JavaHome, string ReaScript, string NodeExe);
+
+/// <summary>A JDK found on disk. The version comes from its `release` file; java.exe is never run.</summary>
+public sealed record JavaInstall(string Home, int Major, string Version, string Vendor, bool Is64Bit)
+{
+    /// <summary>Ghidra 12.1.x needs a 64-bit JDK 21 or newer.</summary>
+    public const int MinimumMajor = 21;
+
+    public bool IsSupported => Major >= MinimumMajor && Is64Bit;
+
+    public string Display
+    {
+        get
+        {
+            var name = Major > 0 ? $"JDK {Version}" : "JDK (version unknown)";
+            if (Vendor.Length > 0) name += $" — {Vendor}";
+            if (Major is > 0 and < MinimumMajor) name += $"  [too old, needs {MinimumMajor}+]";
+            else if (!Is64Bit) name += "  [32-bit, needs 64-bit]";
+            else if (Major <= 0) name += "  [version unknown]";
+            return $"{name}   {Home}";
+        }
+    }
+}
+
+/// <summary>Result of checking a folder for the layout of a Ghidra release.</summary>
+public sealed record GhidraInfo(string Dir, bool IsValid, string Version, string Message);

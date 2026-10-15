@@ -17,28 +17,11 @@
             <TextBox x:Name="FolderBox" Margin="8,0,0,0" VerticalContentAlignment="Center" IsReadOnly="True" />
         </DockPanel>
 
-        <Expander Grid.Row="1" Header="REA / Ghidra settings" Margin="0,8,0,0">
-            <Grid Margin="0,6,0,0">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="140" />
-                    <ColumnDefinition Width="*" />
-                </Grid.ColumnDefinitions>
-                <Grid.RowDefinitions>
-                    <RowDefinition /><RowDefinition /><RowDefinition /><RowDefinition />
-                </Grid.RowDefinitions>
-                <TextBlock Grid.Row="0" Text="GHIDRA_INSTALL_DIR" VerticalAlignment="Center" />
-                <TextBox Grid.Row="0" Grid.Column="1" x:Name="GhidraBox" Margin="0,2" />
-                <TextBlock Grid.Row="1" Text="JAVA_HOME (JDK 21+)" VerticalAlignment="Center" />
-                <TextBox Grid.Row="1" Grid.Column="1" x:Name="JavaBox" Margin="0,2" />
-                <TextBlock Grid.Row="2" Text="rea.mjs path" VerticalAlignment="Center" />
-                <TextBox Grid.Row="2" Grid.Column="1" x:Name="ReaBox" Margin="0,2" />
-                <StackPanel Grid.Row="3" Grid.Column="1" Orientation="Horizontal" Margin="0,4,0,0">
-                    <Button Content="Run rea doctor" Padding="10,3" Click="Doctor_Click" />
-                    <TextBlock Margin="12,0,0,0" VerticalAlignment="Center" Foreground="Gray"
-                               Text="Values apply to REA child processes only; nothing is written to your environment." />
-                </StackPanel>
-            </Grid>
-        </Expander>
+        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,8,0,0">
+            <Button Content="Settings…" Padding="12,3" Click="Settings_Click" />
+            <Button Content="Run rea doctor" Padding="12,3" Margin="8,0,0,0" Click="Doctor_Click" />
+            <TextBlock x:Name="SettingsSummary" Margin="12,0,0,0" VerticalAlignment="Center" Foreground="Gray" />
+        </StackPanel>
 
         <Grid Grid.Row="2" Margin="0,8,0,0">
             <Grid.ColumnDefinitions>
