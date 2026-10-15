@@ -24,7 +24,10 @@ public partial class MainWindow : Window
     private string _root = "";
     private string? _analyzedPath;
     private OverviewResult? _overview;
-    private string? _projectPath;
+    private readonly ProjectLibrary _library = new(ProjectLibrary.DefaultFolder);
+    private string? _projectId;        // catalog id of the current analysis once it has been stored
+    private bool _dirty;               // code was added since the project was last stored
+    private bool _suppressProjectSelection;
     private CancellationTokenSource? _cts;
     private ReaSettings _settings;
 
@@ -43,11 +46,14 @@ public partial class MainWindow : Window
         InitializeComponent();
         _settings = LoadSettings();
         ShowSettingsSummary();
+        RefreshProjectList(null);
+        if (ProjectsList.Items.Count > 0) LeftTabs.SelectedItem = ProjectsTab;
         Closing += (_, _) =>
         {
             SaveSettings();
             _cts?.Cancel();
             _bulkCts?.Cancel();
+            SaveOnExit();
             DisposeSession();
         };
     }
@@ -176,6 +182,7 @@ public partial class MainWindow : Window
     {
         var path = item.Pe.FullPath;
         await StopBackgroundWorkAsync();
+        await StoreProjectAsync();   // keep code added to the project being replaced
         DisposeSession();
         ClearAnalysis();
 
@@ -229,6 +236,8 @@ public partial class MainWindow : Window
             Tabs.SelectedItem = FunctionsTab;
             StatusText.Text = $"Done: {_procedures.Count(p => !p.IsImport)} functions, {_strings.Count} strings. " +
                               "Select a function to read its code.";
+            _dirty = true;
+            await StoreProjectAsync();   // the analysis is the expensive part; keep it before anything else can fail
             StartBulkDecompile(session);
         }
         catch (OperationCanceledException) { StatusText.Text = "Cancelled."; }
@@ -331,6 +340,7 @@ public partial class MainWindow : Window
             finally { _interactive--; }
 
             _decompiled[proc.Address] = code;
+            _dirty = true;
             if (version == _selectionVersion) CodeBox.Text = code;
         }
         catch (ReaException ex)
@@ -424,6 +434,7 @@ public partial class MainWindow : Window
                     if (r.Code is not null) _decompiled[r.Address] = r.Code;
                     else if (r.Error is not null) _decompileErrors[r.Address] = r.Error;
                 }
+                _dirty = true;
                 done += part.Count;
                 BulkBar.Value = done;
                 BulkText.Text = $"Decompiling {done}/{total}";
@@ -442,6 +453,7 @@ public partial class MainWindow : Window
             _bulkCts = null;
             CancelButton.IsEnabled = _cts is not null;
         }
+        await StoreProjectAsync();   // whatever was decompiled is kept, even if the run was stopped
     }
 
     private async Task StopBackgroundWorkAsync()
@@ -462,7 +474,8 @@ public partial class MainWindow : Window
     {
         _analyzedPath = null;
         _overview = null;
-        _projectPath = null;
+        _projectId = null;
+        _dirty = false;
         _procedures = new();
         _strings = new();
         _decompiled.Clear();
@@ -490,41 +503,118 @@ public partial class MainWindow : Window
 
         var dialog = new SaveFileDialog
         {
-            Title = "Save REA project",
+            Title = "Export REA project",
             Filter = $"REA project (*{ProjectStore.Extension})|*{ProjectStore.Extension}",
             DefaultExt = ProjectStore.Extension,
-            FileName = _projectPath is null
-                ? Path.GetFileNameWithoutExtension(_analyzedPath) + ProjectStore.Extension
-                : Path.GetFileName(_projectPath),
-            InitialDirectory = _projectPath is null ? null : Path.GetDirectoryName(_projectPath),
+            FileName = Path.GetFileNameWithoutExtension(_analyzedPath) + ProjectStore.Extension,
         };
         if (dialog.ShowDialog(this) != true) return;
 
-        // Copy on the UI thread (the background decompile mutates these); serialize and write off it.
-        var project = new ProjectFile
-        {
-            TargetPath = _analyzedPath,
-            Root = _root,
-            Overview = _overview,
-            Procedures = _procedures.ToList(),
-            Strings = _strings.ToList(),
-            Decompiled = new Dictionary<string, string>(_decompiled),
-            DecompileErrors = new Dictionary<string, string>(_decompileErrors),
-        };
+        var project = BuildProjectFile();
         var totalFunctions = _procedures.Count(p => !p.IsImport);
         var target = dialog.FileName;
 
         SaveProjectButton.IsEnabled = false;
-        StatusText.Text = "Saving project…";
+        StatusText.Text = "Exporting project…";
         try
         {
             await Task.Run(() => ProjectStore.SaveAsync(target, project));
-            _projectPath = target;
             var size = new FileInfo(target).Length / 1_048_576.0;
-            StatusText.Text = $"Saved {target} ({size:0.0} MB, code for {project.Decompiled.Count} of {totalFunctions} functions).";
+            StatusText.Text = $"Exported {target} ({size:0.0} MB, code for {project.Decompiled.Count} of {totalFunctions} functions).";
         }
         catch (ReaException ex) { ShowFailure(ex); }
         finally { SaveProjectButton.IsEnabled = _analyzedPath is not null; }
+    }
+
+    /// <summary>
+    /// Snapshot of the current analysis. Copied on the UI thread because the background decompile mutates the
+    /// dictionaries; serializing and writing can then happen off it.
+    /// </summary>
+    private ProjectFile BuildProjectFile() => new()
+    {
+        TargetPath = _analyzedPath!,
+        Root = _root,
+        Overview = _overview!,
+        Procedures = _procedures.ToList(),
+        Strings = _strings.ToList(),
+        Decompiled = new Dictionary<string, string>(_decompiled),
+        DecompileErrors = new Dictionary<string, string>(_decompileErrors),
+    };
+
+    /// <summary>Stores the current analysis in the app's project folder and refreshes the Projects list.</summary>
+    private async Task StoreProjectAsync()
+    {
+        if (_analyzedPath is null || _overview is null || !_dirty) return;
+        var id = ProjectLibrary.IdFor(_analyzedPath, _overview.Sha256);
+        var project = BuildProjectFile();
+        _dirty = false;
+        try
+        {
+            await Task.Run(() => _library.SaveAsync(id, project));
+            _projectId = id;
+            RefreshProjectList(id);
+        }
+        catch (ReaException ex)
+        {
+            _dirty = true;
+            Log($"Could not store the project automatically:\n{ex.Message}");
+        }
+    }
+
+    /// <summary>Last-chance store when the window closes; bounded so closing never hangs.</summary>
+    private void SaveOnExit()
+    {
+        if (!_dirty || _analyzedPath is null || _overview is null) return;
+        var id = ProjectLibrary.IdFor(_analyzedPath, _overview.Sha256);
+        var project = BuildProjectFile();
+        try { Task.Run(() => _library.SaveAsync(id, project)).Wait(TimeSpan.FromSeconds(5)); }
+        catch (AggregateException) { }
+    }
+
+    private void RefreshProjectList(string? selectId)
+    {
+        var projects = _library.List();
+        _suppressProjectSelection = true;
+        try
+        {
+            ProjectsList.ItemsSource = projects;
+            ProjectsList.SelectedItem = projects.FirstOrDefault(p => p.Id == selectId);
+        }
+        finally { _suppressProjectSelection = false; }
+        ProjectsHint.Text = projects.Count == 0
+            ? "Analyses appear here automatically."
+            : $"{projects.Count} stored in {_library.Folder}";
+        DeleteProjectButton.IsEnabled = ProjectsList.SelectedItem is not null;
+    }
+
+    private async void Projects_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        DeleteProjectButton.IsEnabled = ProjectsList.SelectedItem is not null;
+        if (_suppressProjectSelection || ProjectsList.SelectedItem is not ProjectMeta meta) return;
+        if (_cts is not null)
+        {
+            StatusText.Text = "Wait for the current operation to finish (or cancel it), then select the project again.";
+            RefreshProjectList(_projectId);
+            return;
+        }
+        await OpenProjectFileAsync(_library.ProjectPath(meta.Id));
+    }
+
+    private void DeleteProject_Click(object sender, RoutedEventArgs e)
+    {
+        if (ProjectsList.SelectedItem is not ProjectMeta meta) return;
+        var answer = MessageBox.Show(this,
+            $"Delete the stored analysis of {meta.Name}?\n\nThe binary itself is not touched; analyzing it again recreates the project.",
+            "Delete project", MessageBoxButton.YesNo, MessageBoxImage.Question);
+        if (answer != MessageBoxResult.Yes) return;
+        try
+        {
+            _library.Delete(meta.Id);
+            if (_projectId == meta.Id) _projectId = null;
+            RefreshProjectList(_projectId);
+            StatusText.Text = $"Deleted the project of {meta.Name}.";
+        }
+        catch (ReaException ex) { ShowFailure(ex); }
     }
 
     private async void OpenProject_Click(object sender, RoutedEventArgs e)
@@ -535,8 +625,14 @@ public partial class MainWindow : Window
             Filter = $"REA project (*{ProjectStore.Extension})|*{ProjectStore.Extension}|All files|*.*",
         };
         if (dialog.ShowDialog(this) != true) return;
+        await OpenProjectFileAsync(dialog.FileName);
+    }
 
+    /// <summary>Loads a project file (from the library or anywhere else) and shows it; no Ghidra is involved.</summary>
+    private async Task OpenProjectFileAsync(string file)
+    {
         await StopBackgroundWorkAsync();
+        await StoreProjectAsync();   // keep code added to the project being left
         DisposeSession();
 
         ProjectFile project;
@@ -544,7 +640,6 @@ public partial class MainWindow : Window
         {
             try
             {
-                var file = dialog.FileName;
                 project = await Task.Run(() => ProjectStore.LoadAsync(file, cts.Token), cts.Token);
             }
             catch (OperationCanceledException) { StatusText.Text = "Cancelled."; EndWork(); return; }
@@ -553,7 +648,11 @@ public partial class MainWindow : Window
             ClearAnalysis();
             _analyzedPath = project.TargetPath;
             _overview = project.Overview;
-            _projectPath = dialog.FileName;
+            _projectId = ProjectLibrary.IdFor(project.TargetPath, project.Overview.Sha256);
+            // A file from outside the project folder is added to it, so it shows up in the list from now on.
+            var inLibrary = string.Equals(Path.GetFullPath(file), Path.GetFullPath(_library.ProjectPath(_projectId)),
+                StringComparison.OrdinalIgnoreCase);
+            _dirty = !inLibrary;
             _root = project.Root;
             FolderBox.Text = _root;
             _procedures = project.Procedures;
@@ -584,6 +683,8 @@ public partial class MainWindow : Window
         }
         StatusText.Text = status;
 
+        await StoreProjectAsync();            // adds a project that came from outside the folder
+        RefreshProjectList(_projectId);       // highlight the open project
         await WarnIfTargetChangedAsync(project);
     }
 

@@ -20,8 +20,10 @@
         <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,8,0,0">
             <Button Content="Settings…" Padding="12,3" Click="Settings_Click" />
             <Button Content="Run rea doctor" Padding="12,3" Margin="8,0,0,0" Click="Doctor_Click" />
-            <Button x:Name="OpenProjectButton" Content="Open project…" Padding="12,3" Margin="20,0,0,0" Click="OpenProject_Click" />
-            <Button x:Name="SaveProjectButton" Content="Save project…" Padding="12,3" Margin="8,0,0,0" Click="SaveProject_Click" IsEnabled="False" />
+            <Button x:Name="OpenProjectButton" Content="Open file…" Padding="12,3" Margin="20,0,0,0" Click="OpenProject_Click"
+                    ToolTip="Open a .reaproj file from anywhere (it is then added to Projects)." />
+            <Button x:Name="SaveProjectButton" Content="Export…" Padding="12,3" Margin="8,0,0,0" Click="SaveProject_Click" IsEnabled="False"
+                    ToolTip="Copy the current project to a .reaproj file of your choice. Projects are also saved automatically." />
             <TextBlock x:Name="SettingsSummary" Margin="12,0,0,0" VerticalAlignment="Center" Foreground="Gray" />
         </StackPanel>
 
@@ -33,7 +35,9 @@
             </Grid.ColumnDefinitions>
 
             <!-- 2. Detected binaries -->
-            <DockPanel Grid.Column="0">
+            <TabControl Grid.Column="0" x:Name="LeftTabs">
+            <TabItem Header="Binaries">
+            <DockPanel Margin="0,6,0,0">
                 <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,6">
                     <TextBlock Text="Binaries" FontWeight="SemiBold" VerticalAlignment="Center" />
                     <CheckBox x:Name="HideHelpersBox" Content="Hide helpers and runtime libraries" Margin="14,0,0,0"
@@ -70,6 +74,32 @@
                     </DataGrid.RowStyle>
                 </DataGrid>
             </DockPanel>
+            </TabItem>
+
+            <!-- Analyses are stored automatically; pick one to continue where you left off. -->
+            <TabItem x:Name="ProjectsTab" Header="Projects">
+                <DockPanel Margin="0,6,0,0">
+                    <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,6,0,0">
+                        <Button x:Name="DeleteProjectButton" Content="Delete selected" Padding="10,3"
+                                Click="DeleteProject_Click" IsEnabled="False" />
+                        <TextBlock x:Name="ProjectsHint" Margin="12,0,0,0" VerticalAlignment="Center" Foreground="Gray" />
+                    </StackPanel>
+                    <ListBox x:Name="ProjectsList" HorizontalContentAlignment="Stretch"
+                             SelectionChanged="Projects_SelectionChanged">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Margin="2,4">
+                                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" />
+                                    <TextBlock Text="{Binding Summary}" Foreground="Gray" />
+                                    <TextBlock Text="{Binding TargetPath}" Foreground="Gray" FontSize="11"
+                                               TextTrimming="CharacterEllipsis" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </DockPanel>
+            </TabItem>
+            </TabControl>
 
             <GridSplitter Grid.Column="1" HorizontalAlignment="Stretch" />
 

@@ -69,11 +69,16 @@ normally an instant cache hit. *Cancel* stops the background work between batche
 
 ## Projects
 
-*Save project…* writes a `.reaproj` file (gzip-compressed JSON) with the overview, function list, strings and all
-decompiled code so far. *Open project…* shows it again in well under a second, with no Ghidra involved.
-Ghidra is started again only if you select a function whose code was not saved, and then only for that file.
-A project is created only when you save one; the app does not write analysis output anywhere else.
-If the analyzed file has changed since the project was saved, the Log tab says so.
+Every analysis is stored automatically in `%LOCALAPPDATA%\ReaWin\projects`: right after the analysis, again when the
+background decompile finishes or is stopped, and when you close the app. They are listed in the **Projects** tab
+on the left (newest first). Selecting one loads it in well under a second with no Ghidra involved. Analyzing the
+same file again updates its project rather than adding a second one. *Delete selected* removes a project (never
+the binary).
+
+A project holds the overview, function list, strings and all decompiled code (gzip-compressed JSON). Ghidra is
+started again only if you select a function whose code was not stored, and then only for that file. *Export…*
+copies the current project to a `.reaproj` file anywhere, and *Open file…* loads one (it is then added to the
+list). If the analyzed file has changed since the project was stored, the Log tab says so.
 
 ## Known limitations
 

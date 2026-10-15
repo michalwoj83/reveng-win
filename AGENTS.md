@@ -18,6 +18,7 @@ src/ReaWin/
   Services/ReaClient.cs     run `node rea.mjs <cmd> --format json`, parse evidence (one-shot commands)
   Services/ReaSession.cs    long-lived `rea --mcp` session: analyze once, then fast queries and decompiles
   Services/ProjectStore.cs  save/open `.reaproj` files (gzip JSON) so a finished analysis can be reopened
+  Services/ProjectLibrary.cs app project folder: `.reaproj` + small `.json` catalog entry, keyed by name + SHA-256
   Services/JavaLocator.cs   find installed JDKs from registry/folders/PATH (reads `release`, never runs java)
   Services/GhidraLocator.cs validate a Ghidra release folder by file layout
   SettingsWindow.xaml(.cs)  pick the Ghidra folder and a JDK 21+
@@ -70,8 +71,10 @@ to check them. There is no automated test project yet. Verify changes by buildin
   managed inspection; Electron goes to JavaScript analysis. Do not add rename/annotate features for Windows.
 - Preserve source values: show addresses and names exactly as REA returns them (`EXTERNAL:0x5`, `DLL::API`).
   Do not normalize them if they will be used to call REA again.
-- Do not guess that data is secret. Do not log anything, and persist nothing except the user's settings and a
-  `.reaproj` project file that the user explicitly saves (overview, functions, strings, decompiled code).
+- Do not guess that data is secret. Do not log anything, and persist nothing except the user's settings and analysis
+  projects (overview, functions, strings, decompiled code). Projects live in `%LOCALAPPDATA%\ReaWin\projects` (stored
+  automatically after each analysis, listed in the Projects tab, deletable by the user) or in a `.reaproj` file the
+  user exports. Never store them anywhere else.
 
 ## Conventions
 

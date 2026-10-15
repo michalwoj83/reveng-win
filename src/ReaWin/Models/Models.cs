@@ -56,6 +56,24 @@ public sealed record ProcedureInfo(string Address, string Name)
     [JsonIgnore] public string Kind => IsEntry ? "entry point" : IsImport ? "import" : IsAutoNamed ? "unnamed" : "named";
 }
 
+/// <summary>Catalog entry for a project stored in the app's project folder; small so the list loads instantly.</summary>
+public sealed record ProjectMeta
+{
+    public string Id { get; init; } = "";
+    public string Name { get; init; } = "";
+    public string TargetPath { get; init; } = "";
+    public string Sha256 { get; init; } = "";
+    public DateTime SavedUtc { get; init; }
+    public int Functions { get; init; }
+    public int Decompiled { get; init; }
+    public long SizeBytes { get; init; }
+
+    [JsonIgnore]
+    public string Summary =>
+        $"{Functions:N0} functions · code for {Decompiled:N0} · {SizeBytes / 1_048_576.0:0.0} MB · " +
+        $"saved {SavedUtc.ToLocalTime():yyyy-MM-dd HH:mm}";
+}
+
 /// <summary>One function's result from a batch decompile: pseudocode, or REA's reason it failed.</summary>
 public sealed record DecompiledFunction(string Address, string? Code, string? Error);
 
