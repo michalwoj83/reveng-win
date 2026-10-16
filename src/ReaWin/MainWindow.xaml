@@ -21,6 +21,8 @@
                 <TextBlock DockPanel.Dock="Left" VerticalAlignment="Center" FontSize="16" FontWeight="Bold">
                     <Run Text="Reverse" /><Run Text="." Foreground="{DynamicResource AccentTextBrush}" /><Run Text="Engineer" /><Run Text="." Foreground="{DynamicResource AccentTextBrush}" /><Run Text="AI" />
                 </TextBlock>
+                <Button DockPanel.Dock="Right" Content="About" Click="About_Click" Margin="8,0,0,0" VerticalAlignment="Center"
+                        AutomationProperties.Name="About Reverse.Engineer.AI" />
                 <Button DockPanel.Dock="Right" Content="Settings" Click="Settings_Click" Margin="8,0,0,0" VerticalAlignment="Center"
                         AutomationProperties.Name="Open settings" />
                 <Button DockPanel.Dock="Right" Content="Run rea doctor" Click="Doctor_Click" Style="{StaticResource TextButton}"

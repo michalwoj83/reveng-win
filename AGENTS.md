@@ -31,6 +31,7 @@ src/ReaWin/
   installer/                ReaWin.iss + build-installer.ps1: per-user Inno Setup using the ai-tooling installer kit (pins: scripts/ai-pins.json)
   SettingsWindow.xaml(.cs)  pick the Ghidra folder, a JDK 21+, the appearance, and the local AI options
   ThemeManager.cs           light/dark/follow-Windows: swaps the token dictionary, dark title bar
+  AboutWindow.xaml(.cs)     About: logo, version, manifest, how it works, credits (header "About" button)
   Themes/Tokens.*.xaml      semantic color brushes (light, dark); same keys in both
   Themes/Controls.xaml      control templates and shared styles (buttons, tabs, grids, lists, scroll bars…)
   Models/Models.cs          records shared across layers
@@ -100,7 +101,7 @@ to check them. `dotnet test tests\ReaWin.Tests` runs the unit tests (the real-mo
 
 ## Look and feel (Ai.Slop.AI visual system)
 
-- Product name in the UI is **Reverse.Engineer.AI**. Ai.Slop.AI appears only as the publisher line in Settings → About.
+- Product name in the UI is **Reverse.Engineer.AI**. Ai.Slop.AI appears only as the publisher: the line in Settings, and the logo in the About window (header button, `AboutWindow`; white logo on dark, dark logo on light; both transparent PNGs from the brand kit, never recolored or cropped).
 - Colors come from the semantic brushes in `Themes/Tokens.*.xaml` through `DynamicResource` (`SurfaceBrush`, `TextBrush`,
   `PrimaryBrush`, `LiveBrush`, `ErrBrush`…). No literal hex or `Brushes.*` in views or code-behind; in code use
   `SetResourceReference`. Add a token to both theme files or to neither.

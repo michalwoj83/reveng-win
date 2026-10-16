@@ -18,6 +18,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The publisher logo for the About window: white-on-dark and dark-on-light, both transparent. -->
+    <Resource Include="Assets\AiSlopAi-logo-dark.png" />
+    <Resource Include="Assets\AiSlopAi-logo-light.png" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- The WPF SDK drops System.IO from implicit usings. -->
     <Using Include="System.IO" />
   </ItemGroup>

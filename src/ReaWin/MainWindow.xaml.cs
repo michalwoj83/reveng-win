@@ -71,6 +71,8 @@ public partial class MainWindow : Window
         };
     }
 
+    private void About_Click(object sender, RoutedEventArgs e) => new AboutWindow { Owner = this }.ShowDialog();
+
     private void Settings_Click(object sender, RoutedEventArgs e)
     {
         var dialog = new SettingsWindow(_settings) { Owner = this };

@@ -79,7 +79,7 @@ Special cases:
 The app uses the Ai.Slop.AI visual system: neutral surfaces, one violet accent, cyan for work in progress, and a
 header chip that says what state the analysis engine is in (*Ghidra ready*, *Analyzing*, *Decompiling*, *Setup needed*,
 *Last run failed*). When there is nothing to show, the results pane explains why and offers the next step. Light and
-dark themes are in Settings → Appearance (default: follow Windows, including the title bar). REA's facts are tagged
+The header has an **About** button (version, how the app works, credits). dark themes are in Settings → Appearance (default: follow Windows, including the title bar). REA's facts are tagged
 *Observed · REA*; the *Explain* and *Summarize* buttons are disabled placeholders until AI features exist.
 
 ## Speed and sessions

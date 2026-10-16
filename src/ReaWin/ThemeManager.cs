@@ -49,7 +49,8 @@ public static class ThemeManager
         foreach (Window w in Application.Current.Windows) SetTitleBar(w, dark);
     }
 
-    private static bool IsDark() => _setting switch
+    /// <summary>True when the dark tokens are in use (for assets that come in light and dark versions).</summary>
+    public static bool IsDark() => _setting switch
     {
         Dark => true,
         Light => false,
