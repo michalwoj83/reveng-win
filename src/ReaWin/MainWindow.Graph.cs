@@ -61,7 +61,7 @@ public partial class MainWindow
         ("Move around.", "Double-click a node, press Enter or choose Make focus to centre the graph on it. ◀ ▶ go back and forward through the functions you visited. Drag to pan, scroll to zoom, Fit resets the view."),
         ("Widen or narrow.", "Depth shows functions further away; Callers and Callees show one side only; +N more shows more of a long column."),
         ("Cut the noise.", "Library and runtime functions are hidden, hubs are not followed and imports are small chips. The line under the graph counts everything left out, and the boxes bring it back."),
-        ("Go to the code.", "Open code jumps to the function on the Functions tab, where Explain describes it. A function that was explained shows the AI's readable name and a one-line description on its node (marked AI); hover the node for the full text. The name REA reported stays on the second line."),
+        ("Go to the code.", "Open code jumps to the function on the Functions tab, where Explain describes it. A function that was explained shows the name the AI gave it (the alias name, once the alias code is written) and a one-line description on its node, marked AI; hover the node for the full text. The name REA reported stays on the second line."),
         ("Know the limits.", "Only direct calls are drawn. Calls through pointers, vtables and callbacks are missing, so a function marked \"no callers\" may still be used."),
     ];
 
@@ -106,8 +106,10 @@ public partial class MainWindow
             return $"{node.MoreCount} more neighbours are not drawn, to keep the picture readable.\nClick to show up to {GraphOptions.MoreStep} more.";
 
         var callers = _graphIndex?.CallersOf(node.Address).Count ?? 0;
-        var lines = new List<string> { string.IsNullOrEmpty(node.Title) ? node.Name : node.Title + "  (AI name)" };
-        if (!string.IsNullOrEmpty(node.Title)) lines.Add(node.Name);   // the name REA reported, exactly
+        var aiName = !string.IsNullOrEmpty(node.Alias) ? node.Alias : node.Title;
+        var lines = new List<string> { string.IsNullOrEmpty(aiName) ? node.Name : aiName + "  (AI name)" };
+        if (!string.IsNullOrEmpty(node.Alias) && !string.IsNullOrEmpty(node.Title)) lines.Add(node.Title + "  (readable name)");
+        if (!string.IsNullOrEmpty(aiName)) lines.Add(node.Name);   // the name REA reported, exactly
         if (node.Kind == GraphNodeKind.Import)
         {
             lines.Add("Imported function: it has no code in this file.");
@@ -262,7 +264,8 @@ public partial class MainWindow
         {
             // the name REA reported, or the AI's name for a function that was explained
             bool Hit(ProcedureInfo p) => p.Name.Contains(text, StringComparison.OrdinalIgnoreCase) ||
-                                         (GraphTitleOf(p.Address) is { } t && t.Contains(text, StringComparison.OrdinalIgnoreCase));
+                                         (GraphTitleOf(p.Address) is { } t && t.Contains(text, StringComparison.OrdinalIgnoreCase)) ||
+                                         (GraphAliasOf(p.Address) is { } a && a.Contains(text, StringComparison.OrdinalIgnoreCase));
             matches = candidates.Where(Hit)
                 .OrderByDescending(p => p.Name.StartsWith(text, StringComparison.OrdinalIgnoreCase)).ThenBy(p => p.Name.Length).ThenBy(p => p.Address, StringComparer.Ordinal).ToList();
         }
@@ -302,6 +305,10 @@ public partial class MainWindow
     /// <summary>The AI's human-readable name for a function, only when the function has been explained and the model gave a usable one.</summary>
     private string? GraphTitleOf(string address) => _descriptions.TryGetValue(address, out var d) ? d.Title : null;
 
+    /// <summary>The function name the AI wrote in the alias implementation, only when the function has an alias and the name differs from REA's.</summary>
+    private string? GraphAliasOf(string address) =>
+        _aliases.TryGetValue(address, out var alias) && _procedures.FirstOrDefault(p => p.Address == address) is { } p && alias.Name != p.Name ? alias.Name : null;
+
     private bool GraphIsLibrary(string address) =>
         _decompiled.TryGetValue(address, out var code) && FunctionContextBuilder.IsLibraryCode(code);
 
@@ -317,7 +324,7 @@ public partial class MainWindow
         if (_graphFocus is null) { ShowGraphEmpty(); return; }
 
         var procedures = _procedures.GroupBy(p => p.Address, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
-        var hood = GraphModel.Build(_graphFocus, _graphIndex, procedures, CurrentGraphOptions(), GraphIsLibrary, GraphSummaryOf, GraphTitleOf);
+        var hood = GraphModel.Build(_graphFocus, _graphIndex, procedures, CurrentGraphOptions(), GraphIsLibrary, GraphSummaryOf, GraphTitleOf, GraphAliasOf);
         if (hood.Nodes.Count == 0) { ShowGraphEmpty(); return; }
 
         var layout = await Task.Run(() => GraphLayout.Compute(hood));
@@ -489,8 +496,9 @@ public partial class MainWindow
 
         var brief = IsFunction(node) ? GraphSummaryOf(node.Address) : null;
         var title = IsFunction(node) ? GraphTitleOf(node.Address) : null;
-        GraphNodeAi.Visibility = brief is null && title is null ? Visibility.Collapsed : Visibility.Visible;
-        GraphNodeAiText.Text = string.Join("\n", new[] { title, brief }.Where(t => !string.IsNullOrEmpty(t)));
+        var alias = IsFunction(node) ? GraphAliasOf(node.Address) : null;
+        GraphNodeAi.Visibility = brief is null && title is null && alias is null ? Visibility.Collapsed : Visibility.Visible;
+        GraphNodeAiText.Text = string.Join("\n", new[] { alias, title, brief }.Where(t => !string.IsNullOrEmpty(t)));
 
         foreach (var action in _graphActions.Where(a => a.IsAvailable(node)))
         {

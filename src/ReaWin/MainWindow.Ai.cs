@@ -25,6 +25,9 @@ public partial class MainWindow
     private int _analysisGeneration;   // changes when the analysis on screen is replaced
     private readonly Dictionary<string, FunctionDescription> _descriptions = new(StringComparer.Ordinal);
     private readonly Dictionary<string, NeighbourSummary> _summaries = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, FunctionAlias> _aliases = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, string> _aliasFailures = new(StringComparer.Ordinal);   // why the second round gave nothing; not saved
+    private bool _showAlias;                 // the code view the user chose: the alias (when a function has one) or the decompiled code
     private CallGraph? _callGraph;
     private CallGraphIndex? _graphIndex;
     private (string Full, string Compact)? _programCard;
@@ -36,6 +39,7 @@ public partial class MainWindow
     private void InitializeAi()
     {
         LlmStrings.Translate = AiProfile.Translate;
+        AliasColumn.Binding = new System.Windows.Data.Binding { Converter = new AliasNameConverter(AliasNameOf), Mode = System.Windows.Data.BindingMode.OneWay };
         CreateLlm();
         WarmUpIfRequested();
     }
@@ -88,7 +92,7 @@ public partial class MainWindow
         var fault = _llm.Fault;
 
         string hint;
-        if (_aiBusy) hint = _llm.State == LlmState.Starting ? "Loading the model…" : $"Describing {_aiBusyName}…";
+        if (_aiBusy) hint = _llm.State == LlmState.Starting ? "Loading the model…" : _aiStage.Length > 0 ? $"{_aiStage} ({_aiBusyName})" : $"Describing {_aiBusyName}…";
         else if (!CurrentAi.Enabled) hint = "AI is off. Turn it on in Settings.";
         else if (fault is not null) hint = fault;
         else if (proc is null) hint = "Select a function to have it described.";
@@ -97,6 +101,12 @@ public partial class MainWindow
         else hint = $"Describes the selected function with {AiProfile.ModelLabel}, running on this PC.";
 
         ExplainButton.IsEnabled = !_aiBusy && CurrentAi.Enabled && fault is null && proc is { IsImport: false };
+        var hasDescription = proc is not null && _descriptions.ContainsKey(proc.Address);
+        var library = proc is not null && _decompiled.TryGetValue(proc.Address, out var shownCode) && FunctionContextBuilder.IsLibraryCode(shownCode);
+        AliasButton.IsEnabled = !_aiBusy && CurrentAi.Enabled && fault is null && proc is { IsImport: false } && hasDescription && !library;
+        AliasButton.ToolTip = library ? "Library and runtime code keeps its names."
+            : !hasDescription ? "Explain the function first: the alias is written from its description."
+            : "Write the same code again with readable names and comments (checked by the app against the original). Also written automatically after Explain.";
         ShowInGraphButton.IsEnabled = _hasResults && proc is { IsImport: false };
         ExplainButton.ToolTip = hint;
         AiHint.Text = hint;
@@ -109,11 +119,23 @@ public partial class MainWindow
 
     private async void Explain_Click(object sender, RoutedEventArgs e) => await DescribeSelectedAsync();
 
+    /// <summary>The second round on its own: for a function that already has a description (explained earlier, or an alias that failed).</summary>
+    private async void AliasButton_Click(object sender, RoutedEventArgs e) => await RunAiWorkAsync(explain: false);
+
     private void AiStop_Click(object sender, RoutedEventArgs e) => _aiCts?.Cancel();
 
-    private async Task DescribeSelectedAsync()
+    private Task DescribeSelectedAsync() => RunAiWorkAsync(explain: true);
+
+    /// <summary>
+    /// Explaining is two rounds. Round one (<paramref name="explain"/>) reads the function with its context and writes the description,
+    /// name and brief; it is unchanged and its result is kept and shown at once. Round two gives the model the code again together
+    /// with that description and asks for an alias implementation: the same code with readable names and comments, checked against the
+    /// original by the app. Round two can also run alone, for a function that already has a description.
+    /// </summary>
+    private async Task RunAiWorkAsync(bool explain)
     {
         if (_aiBusy || FunctionsGrid.SelectedItem is not ProcedureInfo proc || proc.IsImport) return;
+        if (!explain && !_descriptions.ContainsKey(proc.Address)) return;   // the alias is written from a description
 
         var llm = _llm;
         var availability = await llm.CheckAsync();
@@ -131,7 +153,8 @@ public partial class MainWindow
         _aiBusyAddress = proc.Address;
         _aiBusyName = proc.Name;
         _aiStage = "";
-        ShowAiPanel(AiPanelKind.Working, "", "");
+        if (explain) ShowAiPanel(AiPanelKind.Working, "", "");
+        else ShowDescriptionFor(proc);
         RefreshAiUi();
         RefreshChrome();
         try
@@ -139,26 +162,11 @@ public partial class MainWindow
             var code = await CodeForAiAsync(proc);
             if (code is null) return;
 
-            // context is always on: the program, how the function is called, what it calls (the callees are summarized now if
-            // that has not been done yet, and kept in the project)
-            var stage = new Progress<string>(SetAiStage);
-            var graph = await EnsureGraphIndexAsync(ct);
-            SetAiStage("Building the program card…");
-            var card = await ProgramCardAsync();
-            var source = new ContextSource(
-                _procedures.GroupBy(p => p.Address, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal),
-                graph, _summaries, _descriptions, NeighbourCodeAsync, card);
-            var (context, generated) = await ContextGatherer.GatherAsync(llm, proc, code, source, CurrentAi.ContextSize, stage, ct);
-            if (generated > 0) _dirty = true;
-            SetAiStage("Describing the function…");
+            if (explain && !await ExplainAsync(llm, proc, code, generation, ct)) return;
 
-            var description = await FunctionDescriber.DescribeAsync(
-                llm, new FunctionToDescribe(proc.Name, proc.Address, code), CurrentAi.ContextSize, ct, context);
-
-            if (generation != _analysisGeneration) return;   // another analysis or project was opened meanwhile
-            _descriptions[proc.Address] = description;
-            _dirty = true;
-            await StoreProjectAsync();   // a description can take minutes to get: keep it with the project at once
+            if (generation != _analysisGeneration) return;
+            ShowDescriptionFor(proc);    // round one is done: show it while round two works
+            await WriteAliasAsync(llm, proc, code, _descriptions[proc.Address], generation, ct);
         }
         catch (OperationCanceledException) { StatusText.Text = "Stopped."; }
         catch (LlmContextExceededException ex) { ShowAiPanel(AiPanelKind.Error, "Too much text", ex.Message); }
@@ -175,6 +183,157 @@ public partial class MainWindow
             // show what finished (or clear the "working" panel) for whatever is selected now
             if (FunctionsGrid.SelectedItem is ProcedureInfo selected) ShowDescriptionFor(selected);
         }
+    }
+
+    /// <summary>
+    /// Round one, unchanged: the function with its context (program card, facts, call sites, notes on the callees, written on demand)
+    /// is described. The description, its name and its brief are kept in the project at once. False when the analysis was replaced meanwhile.
+    /// </summary>
+    private async Task<bool> ExplainAsync(ILlmProvider llm, ProcedureInfo proc, string code, int generation, CancellationToken ct)
+    {
+        // context is always on: the program, how the function is called, what it calls (the callees are summarized now if
+        // that has not been done yet, and kept in the project)
+        var stage = new Progress<string>(SetAiStage);
+        var graph = await EnsureGraphIndexAsync(ct);
+        SetAiStage("Building the program card…");
+        var card = await ProgramCardAsync();
+        var source = new ContextSource(
+            _procedures.GroupBy(p => p.Address, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal),
+            graph, _summaries, _descriptions, NeighbourCodeAsync, card);
+        var (context, generated) = await ContextGatherer.GatherAsync(llm, proc, code, source, CurrentAi.ContextSize, stage, ct);
+        if (generated > 0) _dirty = true;
+        SetAiStage("Describing the function…");
+
+        var description = await FunctionDescriber.DescribeAsync(
+            llm, new FunctionToDescribe(proc.Name, proc.Address, code), CurrentAi.ContextSize, ct, context);
+
+        if (generation != _analysisGeneration) return false;   // another analysis or project was opened meanwhile
+        _descriptions[proc.Address] = description;
+        _aliases.Remove(proc.Address);                         // an alias written from an older description is out of date
+        _dirty = true;
+        await StoreProjectAsync();                             // a description can take minutes to get: keep it with the project at once
+        AliasesChanged();                                      // the graph and the list show the new name and brief
+        return true;
+    }
+
+    /// <summary>
+    /// Round two: the alias implementation. It is never allowed to fail the explanation: the description is already kept, and whatever goes
+    /// wrong here (the model changed the code, the function is too long, the engine stopped) is shown as a note on the panel.
+    /// </summary>
+    private async Task WriteAliasAsync(ILlmProvider llm, ProcedureInfo proc, string code, FunctionDescription description, int generation, CancellationToken ct)
+    {
+        _aliasFailures.Remove(proc.Address);
+        if (FunctionContextBuilder.IsLibraryCode(code))
+        {
+            _aliasFailures[proc.Address] = "This is library or runtime code, which keeps its names, so no alias was written.";
+            return;
+        }
+        if (description.Truncated)
+        {
+            _aliasFailures[proc.Address] = "The function was cut to fit the context window when it was explained, so an alias of all of it cannot be written. Raise the context size in Settings and explain it again.";
+            return;
+        }
+
+        SetAiStage("Writing the alias code…");
+        try
+        {
+            var alias = await AliasWriter.WriteAsync(llm, new FunctionToDescribe(proc.Name, proc.Address, code), description,
+                CalleeAliasNames(proc), CurrentAi.ContextSize, ct);
+            if (generation != _analysisGeneration) return;
+            _aliases[proc.Address] = alias;
+            _dirty = true;
+            await StoreProjectAsync();
+        }
+        catch (AliasException ex) { _aliasFailures[proc.Address] = ex.Message; Log($"Alias of {proc.Name} @ {proc.Address}:\n{ex.Message}"); }
+        catch (LlmContextExceededException ex) { _aliasFailures[proc.Address] = ex.Message; }
+        catch (LlmUnavailableException ex) { _aliasFailures[proc.Address] = ex.Message; Log($"AI failed while writing the alias:\n{ex.Message}"); }
+        AliasesChanged();
+    }
+
+    /// <summary>
+    /// The names already chosen for functions this one calls and that still have placeholder names (<c>FUN_…</c>): the only new names the
+    /// alias may give them, so one function has one name wherever it is called.
+    /// </summary>
+    private Dictionary<string, string> CalleeAliasNames(ProcedureInfo proc)
+    {
+        var names = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (_graphIndex is null) return names;
+        foreach (var address in _graphIndex.CalleesOf(proc.Address))
+        {
+            if (!_aliases.TryGetValue(address, out var alias)) continue;
+            var callee = _procedures.FirstOrDefault(p => p.Address == address);
+            if (callee is null || callee.Name == alias.Name || !callee.IsAutoNamed && !callee.Name.StartsWith("thunk_FUN_", StringComparison.Ordinal)) continue;
+            names[callee.Name] = alias.Name;
+        }
+        return names;
+    }
+
+    /// <summary>
+    /// The name REA reported is always shown as it is; the alias name of a function is shown next to it, in the Functions list and on the graph,
+    /// only when the function has an alias and its alias name differs.
+    /// </summary>
+    private string? AliasNameOf(string address, string reaName) =>
+        _aliases.TryGetValue(address, out var alias) && alias.Name != reaName ? alias.Name : null;
+
+    /// <summary>Something an explanation produced changed: refresh everything that shows names, briefs or aliases.</summary>
+    private void AliasesChanged()
+    {
+        FunctionsGrid.Items.Refresh();   // the AI name column
+        if (FunctionsGrid.SelectedItem is ProcedureInfo selected) UpdateCodeView(selected);
+        if (Tabs.SelectedItem == GraphTab) RebuildGraph(resetView: false);
+        RefreshAiUi();
+    }
+
+    /// <summary>Turns a function's alias into a name for the Functions list: the alias name when there is one that differs, otherwise nothing.</summary>
+    private sealed class AliasNameConverter(Func<string, string, string?> lookup) : System.Windows.Data.IValueConverter
+    {
+        public object? Convert(object? value, Type targetType, object? parameter, System.Globalization.CultureInfo culture) =>
+            value is ProcedureInfo p ? lookup(p.Address, p.Name) ?? "" : "";
+
+        public object ConvertBack(object? value, Type targetType, object? parameter, System.Globalization.CultureInfo culture) =>
+            throw new NotSupportedException();
+    }
+
+    // ---- the code view: decompiled, or the alias --------------------------------------------------------------
+
+    private bool _updatingCodeView;
+
+    /// <summary>
+    /// Shows the toggle between the decompiled code and the alias for a function that has an alias, and the chosen one in the code box.
+    /// The alias is marked as an inference; the decompiled code stays one click away and is what REA reported.
+    /// </summary>
+    private void UpdateCodeView(ProcedureInfo? proc)
+    {
+        _updatingCodeView = true;
+        try
+        {
+            var alias = proc is not null && _aliases.TryGetValue(proc.Address, out var a) ? a : null;
+            CodeViewPanel.Visibility = alias is null ? Visibility.Collapsed : Visibility.Visible;
+            var showAlias = alias is not null && _showAlias;
+            CodeViewAlias.IsChecked = showAlias;
+            CodeViewOriginal.IsChecked = !showAlias;
+            CodeAliasTag.Visibility = showAlias ? Visibility.Visible : Visibility.Collapsed;
+            if (proc is null) return;
+
+            if (showAlias)
+            {
+                CodeBox.Text = alias!.Code;
+                CodeHeader.Text = $"{alias.Name}   alias of {proc.Name} @ {proc.Address}";
+            }
+            else if (_decompiled.TryGetValue(proc.Address, out var code))
+            {
+                CodeBox.Text = ForDisplay(code);
+                CodeHeader.Text = $"{proc.Name}   @ {proc.Address}";
+            }
+        }
+        finally { _updatingCodeView = false; }
+    }
+
+    private void CodeView_Click(object sender, RoutedEventArgs e)
+    {
+        if (_updatingCodeView) return;
+        _showAlias = CodeViewAlias.IsChecked == true;
+        if (FunctionsGrid.SelectedItem is ProcedureInfo proc) UpdateCodeView(proc);
     }
 
     // ---- context: the call graph, the program card, the neighbours' code ---------------------------------
@@ -272,8 +431,10 @@ public partial class MainWindow
     private void SetAiStage(string stage)
     {
         _aiStage = stage;
-        if (_aiBusy && FunctionsGrid.SelectedItem is ProcedureInfo p && p.Address == _aiBusyAddress && _llm.State != LlmState.Starting)
-            AiNote.Text = stage;
+        if (_aiBusy && _llm.State != LlmState.Starting) AiHint.Text = $"{stage} ({_aiBusyName})";
+        if (_aiBusy && FunctionsGrid.SelectedItem is ProcedureInfo p && p.Address == _aiBusyAddress && _llm.State != LlmState.Starting
+            && AiState.Visibility == Visibility.Visible)
+            AiNote.Text = stage;   // only the working panel shows the step; a finished description keeps its own note
     }
 
     /// <summary>The function's code as REA returned it: from the cache, or decompiled now (which may start Ghidra for a loaded project).</summary>
@@ -322,6 +483,10 @@ public partial class MainWindow
             var note = $"Written by {description.Model} from the decompiled code; it can be wrong. Check it against the code.";
             if (description.Truncated)
                 note += $" Only the first {description.CodeCharsSent:N0} of {description.CodeCharsTotal:N0} characters of the function were shown to the model.";
+            if (_aliasFailures.TryGetValue(proc.Address, out var aliasProblem))
+                note += $"\nAlias code: {aliasProblem} Press Write alias code to try again.";
+            else if (_aliases.TryGetValue(proc.Address, out var written))
+                note += $"\nAlias code written: {written.Renames.Count} names changed, {written.Comments} comments; the app checked it is the same code. Switch to it above the code.";
             ShowAiPanel(AiPanelKind.Inference, description.Text, note);
             ShowAiContext(description);
         }
@@ -433,8 +598,11 @@ public partial class MainWindow
     private void AiDiscard_Click(object sender, RoutedEventArgs e)
     {
         if (FunctionsGrid.SelectedItem is not ProcedureInfo proc || !_descriptions.Remove(proc.Address)) return;
+        _aliases.Remove(proc.Address);          // the alias was written from this description
+        _aliasFailures.Remove(proc.Address);
         _dirty = true;
         ShowDescriptionFor(proc);
-        StatusText.Text = $"Description of {proc.Name} removed from the project.";
+        AliasesChanged();
+        StatusText.Text = $"Description and alias code of {proc.Name} removed from the project.";
     }
 }

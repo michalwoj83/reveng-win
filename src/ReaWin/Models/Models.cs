@@ -111,7 +111,24 @@ public sealed record ProjectFile
     /// Inferences like <see cref="Descriptions"/>, written on demand and kept so they are not paid for twice.
     /// </summary>
     public Dictionary<string, NeighbourSummary> Summaries { get; init; } = new();
+    /// <summary>
+    /// Alias implementations by function address: the same code with readable names and comments, written by the local model in a
+    /// second round and checked token by token against the original. Inferences, kept apart from <see cref="Decompiled"/>; nothing
+    /// is written back to REA or Ghidra. Projects saved before this existed simply have none.
+    /// </summary>
+    public Dictionary<string, FunctionAlias> Aliases { get; init; } = new();
 }
+
+/// <summary>
+/// An alias implementation of one function: its code, the readable name of the function in it, and what was renamed.
+/// The code is the original with only names and comments changed (verified by the app); <paramref name="Name"/> is shown next to the
+/// name REA reported, never instead of it.
+/// </summary>
+/// <param name="Code">The alias, with its comments.</param>
+/// <param name="Name">The function's name in the alias: a snake_case identifier.</param>
+/// <param name="Renames">Original name to new name, for every name that was changed in the alias.</param>
+/// <param name="Comments">How many comments the alias has.</param>
+public sealed record FunctionAlias(string Code, string Name, Dictionary<string, string> Renames, int Comments, string Model, DateTime GeneratedUtc);
 
 /// <summary>
 /// Direct calls between functions: the callee addresses of each function that was queried, exactly as REA's

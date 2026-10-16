@@ -235,15 +235,17 @@ public sealed class GraphCanvas : FrameworkElement
         if (selected && !n.IsFocus) dc.DrawRoundedRectangle(Token("TintBrush"), null, r, 9, 9);
         if (_scale < 0.35) return;                       // a plain box when zoomed far out
 
-        // First line: the AI's human-readable title when the function has been explained (tagged "AI" at the right edge: it is an
-        // inference), otherwise the name REA reported. The REA name and address always stay on the second line, exactly as reported.
+        // First line: the name the AI gave the function (the alias name, else the human-readable title) when it has been explained,
+        // tagged "AI" at the right edge because it is an inference; otherwise the name REA reported. The REA name and address always
+        // stay on the second line, exactly as reported.
         var nameBrush = library ? "MutedBrush" : "TextBrush";
-        var titled = !string.IsNullOrEmpty(n.Title);
+        var aiLabel = !string.IsNullOrEmpty(n.Alias) ? n.Alias : n.Title;
+        var titled = !string.IsNullOrEmpty(aiLabel);
         if (titled && _scale >= 0.5)
         {
             var tag = Text("AI", 10, "AccentTextBrush", true, 24);
             dc.DrawText(tag, new Point(r.Right - 10 - tag.WidthIncludingTrailingWhitespace, r.Y + 10));
-            dc.DrawText(Text(n.Title!, 12.5, nameBrush, true, inner - 28), new Point(r.X + 10, r.Y + 8));
+            dc.DrawText(Text(aiLabel!, 12.5, nameBrush, true, inner - 28), new Point(r.X + 10, r.Y + 8));
         }
         else dc.DrawText(Text(n.Name, 12.5, nameBrush, true, inner), new Point(r.X + 10, r.Y + 8));
         if (_scale < 0.5) return;

@@ -437,7 +437,8 @@ public partial class MainWindow : Window
         FunctionsGrid.ItemsSource = _procedures
             .Where(p => !internalOnly || !p.IsImport)
             .Where(p => text.Length == 0 || p.Name.Contains(text, StringComparison.OrdinalIgnoreCase) ||
-                        p.Address.Contains(text, StringComparison.OrdinalIgnoreCase))
+                        p.Address.Contains(text, StringComparison.OrdinalIgnoreCase) ||
+                        (AliasNameOf(p.Address, p.Name) is { } alias && alias.Contains(text, StringComparison.OrdinalIgnoreCase)))
             .ToList();
     }
 
@@ -464,6 +465,7 @@ public partial class MainWindow : Window
         var version = ++_selectionVersion;
         CodeHeader.Text = $"{proc.Name}   @ {proc.Address}";
         ShowDescriptionFor(proc);   // the AI description of this function, if there is one (or the "working" panel)
+        UpdateCodeView(null);       // hides the toggle until it is known that this function has code and an alias
 
         if (proc.IsImport)
         {
@@ -473,6 +475,7 @@ public partial class MainWindow : Window
         if (_decompiled.TryGetValue(proc.Address, out var cached))
         {
             CodeBox.Text = ForDisplay(cached);
+            UpdateCodeView(proc);   // the alias, if the user chose to see it and this function has one
             return;
         }
         if (_decompileErrors.TryGetValue(proc.Address, out var knownError))
@@ -643,6 +646,8 @@ public partial class MainWindow : Window
         _analysisGeneration++;
         _descriptions.Clear();
         _summaries.Clear();
+        _aliases.Clear();
+        _aliasFailures.Clear();
         _callGraph = null;
         _graphIndex = null;
         _programCard = null;
@@ -714,6 +719,7 @@ public partial class MainWindow : Window
         Descriptions = new Dictionary<string, FunctionDescription>(_descriptions),
         CallGraph = _callGraph,
         Summaries = new Dictionary<string, NeighbourSummary>(_summaries),
+        Aliases = new Dictionary<string, FunctionAlias>(_aliases),
     };
 
     /// <summary>Stores the current analysis in the app's project folder and refreshes the Projects list.</summary>
@@ -836,6 +842,7 @@ public partial class MainWindow : Window
             foreach (var (address, error) in project.DecompileErrors) _decompileErrors[address] = error;
             foreach (var (address, description) in project.Descriptions) _descriptions[address] = description;
             foreach (var (address, summary) in project.Summaries) _summaries[address] = summary;
+            foreach (var (address, alias) in project.Aliases) _aliases[address] = alias;
             if (project.CallGraph is { Callees.Count: > 0 } graph) SetCallGraph(graph);   // else recomputed when the AI needs it
 
             OverviewBox.Text = FormatOverview(Path.GetFileName(project.TargetPath), project.Overview, _procedures);

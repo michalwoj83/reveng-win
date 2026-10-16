@@ -167,6 +167,21 @@ public class ArtifactTests
     }
 
     [Fact]
+    public void The_graph_node_carries_the_alias_name_next_to_the_name_REA_reported()
+    {
+        var graph = new CallGraphIndex(new CallGraph { Callees = { ["0x1000"] = ["0x2000"], ["0x2000"] = [] } });
+        var procs = new Dictionary<string, ProcedureInfo> { ["0x1000"] = new("0x1000", "FUN_1000"), ["0x2000"] = new("0x2000", "FUN_2000") };
+
+        var hood = GraphModel.Build("0x1000", graph, procs, new GraphOptions(), _ => false, _ => null,
+            a => a == "0x2000" ? "Free list" : null, a => a == "0x2000" ? "free_list" : null);
+
+        var node = hood.Nodes.Single(n => n.Address == "0x2000");
+        Assert.Equal("free_list", node.Alias);
+        Assert.Equal("Free list", node.Title);
+        Assert.Equal("FUN_2000", node.Name);                    // the name REA reported is never replaced
+    }
+
+    [Fact]
     public void A_graph_built_without_titles_still_works()
     {
         var graph = new CallGraphIndex(new CallGraph { Callees = { ["0x1000"] = [] } });

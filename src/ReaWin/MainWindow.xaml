@@ -182,6 +182,19 @@
                                         <DataGrid.Columns>
                                             <DataGridTextColumn Header="Address" Binding="{Binding Address}" Width="104" />
                                             <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="*" />
+                                            <DataGridTextColumn x:Name="AliasColumn" Header="AI name" Width="150" IsReadOnly="True" CanUserSort="False">
+                                                <DataGridTextColumn.HeaderStyle>
+                                                    <Style TargetType="DataGridColumnHeader" BasedOn="{StaticResource {x:Type DataGridColumnHeader}}">
+                                                        <Setter Property="ToolTip" Value="The readable name the local AI gave the function when it was explained. REA's own name stays in the Name column." />
+                                                    </Style>
+                                                </DataGridTextColumn.HeaderStyle>
+                                                <DataGridTextColumn.ElementStyle>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Foreground" Value="{DynamicResource AccentTextBrush}" />
+                                                        <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                                                    </Style>
+                                                </DataGridTextColumn.ElementStyle>
+                                            </DataGridTextColumn>
                                             <DataGridTextColumn Header="Kind" Binding="{Binding Kind}" Width="76" />
                                         </DataGrid.Columns>
                                     </DataGrid>
@@ -194,8 +207,22 @@
                                             <RowDefinition x:Name="AiRow" Height="0" />
                                             <RowDefinition Height="Auto" />
                                         </Grid.RowDefinitions>
-                                        <TextBlock Grid.Row="0" x:Name="CodeHeader" FontWeight="SemiBold" Margin="0,2,0,8"
-                                                   TextTrimming="CharacterEllipsis" Text="Select a function to see its decompiled code." />
+                                        <DockPanel Grid.Row="0" Margin="0,2,0,8">
+                                            <!-- only for a function that has an alias; the alias is an inference, the decompiled code is what REA reported -->
+                                            <StackPanel DockPanel.Dock="Right" x:Name="CodeViewPanel" Orientation="Horizontal" Visibility="Collapsed" Margin="8,0,0,0">
+                                                <Border x:Name="CodeAliasTag" Style="{StaticResource Pill}" Background="Transparent" BorderThickness="1"
+                                                        BorderBrush="{DynamicResource WarnBrush}" Visibility="Collapsed" Margin="0,0,10,0"
+                                                        ToolTip="Written by the local model: the same code as the decompiled version with readable names and comments. The app compared them token by token; only names and comments differ.">
+                                                    <TextBlock Text="Inference · AI" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource WarnBrush}" />
+                                                </Border>
+                                                <RadioButton x:Name="CodeViewOriginal" Content="Decompiled" GroupName="CodeView" IsChecked="True" Margin="0,0,10,0" VerticalAlignment="Center"
+                                                             Click="CodeView_Click" ToolTip="The code exactly as REA and Ghidra returned it." />
+                                                <RadioButton x:Name="CodeViewAlias" Content="Alias" GroupName="CodeView" VerticalAlignment="Center" Click="CodeView_Click"
+                                                             ToolTip="The same code with readable variable and function names and comments, written by the local AI and checked against the original." />
+                                            </StackPanel>
+                                            <TextBlock x:Name="CodeHeader" FontWeight="SemiBold" VerticalAlignment="Center"
+                                                       TextTrimming="CharacterEllipsis" Text="Select a function to see its decompiled code." />
+                                        </DockPanel>
                                         <Border Grid.Row="1" CornerRadius="10" BorderThickness="1" BorderBrush="{DynamicResource LineBrush}"
                                                 Background="{DynamicResource CanvasBrush}">
                                             <TextBox x:Name="CodeBox" Style="{StaticResource CodeBox}" AutomationProperties.Name="Decompiled code" />
@@ -246,6 +273,8 @@
                                                     Margin="0,0,8,0" Click="Explain_Click" />
                                             <Button DockPanel.Dock="Left" x:Name="AiStopButton" Content="Stop" Style="{StaticResource TextButton}" MinHeight="28"
                                                     Visibility="Collapsed" Margin="0,0,8,0" Click="AiStop_Click" />
+                                            <Button DockPanel.Dock="Left" x:Name="AliasButton" Content="Write alias code" Style="{StaticResource TextButton}" MinHeight="28"
+                                                    IsEnabled="False" Margin="0,0,8,0" Click="AliasButton_Click" />
                                             <Button DockPanel.Dock="Left" x:Name="ShowInGraphButton" Content="Show in graph" Style="{StaticResource TextButton}" MinHeight="28"
                                                     IsEnabled="False" Margin="0,0,8,0" Click="ShowInGraph_Click"
                                                     ToolTip="Open this function in the Graph tab: who calls it and what it calls." />

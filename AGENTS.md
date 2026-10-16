@@ -34,6 +34,8 @@ src/ReaWin/
   Services/GraphLayout.cs       layered left-to-right layout of that neighbourhood (pure, deterministic, tested)
   GraphCanvas.cs                one self-drawing element: pan, zoom, hover, select, keyboard; reports events, knows no actions
   MainWindow.Graph.cs           the Graph tab: focus and history, filters, side panel, node actions (see below)
+  Services/AliasVerifier.cs     C-like tokenizer and the check that an alias is the same code (only names and comments differ)
+  Services/AliasWriter.cs       round two: prompt, reply parsing, one retry with the reason; never trusts the model's word
   Services/ContextBudget.cs     token estimates (decompiled C is about 2.4 chars/token with the model's vocabulary)
   MainWindow.Ai.cs          the Explain button, the AI panel, the provider lifecycle
   scripts/Install-Ai.ps1    installs the PrismML llama.cpp build and the Bonsai model, reusing a verified copy from the Hugging Face cache, an installed app or -ModelFile (pins in scripts/ai-pins.json)
@@ -154,6 +156,18 @@ to check them. `dotnet test tests\ReaWin.Tests` runs the unit tests (the real-mo
   Do not add a way to export or browse it separately. REA's `procedure_callers` is the exact inverse of `procedure_callees`, so only callees are saved.
 - **Defaults:** context 32,768 (`AiProfile.DefaultContextSize`, `ReaSettings.Revision` migrates a saved 8,192 once); above 16,384 the KV cache is `q8_0`.
 - **No new dependency beyond `AiSlop.LocalLlm`** (private feed, `nuget.config`; see the `aislop-nuget-packages` skill).
+
+## Alias implementation (round two of Explain)
+
+- **Round one is unchanged** (description, name, brief). Round two runs after it, or alone from *Write alias code*, and gets the code plus the round-one description.
+- **"Same code" is checked, not asked for.** `AliasVerifier` compares token by token: comments and layout may differ; names may differ only for the function itself and
+  Ghidra placeholders; everything else (types, operators, numbers, strings, real names) must be identical; renames must be consistent and injective; new names must be
+  readable snake_case, not keywords, not placeholders, not already used. Other functions' `FUN_` names change only to a name already chosen for them. A reply that fails is
+  retried once with the reason, then dropped. Never store or show an alias that did not pass, and never loosen the check to make more replies pass.
+- **An alias is an inference and display-only.** It is stored on the project (`ProjectFile.Aliases`), tagged *Inference · AI*, and shown beside REA's code and REA's name, never
+  instead of them. Do not write it back to REA or Ghidra (no rename or annotate features for Windows).
+- The alias name appears in the Functions list (`AI name` column) and on graph nodes (first line, tagged AI; the REA name stays on the second line). Library code and
+  truncated or oversized functions get no alias, with the reason.
 
 ## Graph tab
 

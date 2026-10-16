@@ -132,7 +132,7 @@ list). If the analyzed file has changed since the project was stored, the Log ta
 ## Local AI: describe a function
 
 Select a function and press **Explain**: the local model reads the decompiled code **and its context in the program** and writes a short description
-(a human-readable name, a one-sentence brief for the graph, the purpose, the role, the steps that matter, the evidence, what is unclear). It runs on this PC through `AiSlop.LocalLlm`; nothing is sent anywhere. The description appears in its own panel tagged
+(a human-readable name, a one-sentence brief for the graph, the purpose, the role, the steps that matter, the evidence, what is unclear). Explaining is **two rounds**: round one is the description; round two, which starts by itself when round one is done, writes an **alias implementation** (see below). It runs on this PC through `AiSlop.LocalLlm`; nothing is sent anywhere. The description appears in its own panel tagged
 **Inference · AI**, with the model's name and a reminder to check it against the code. It is saved in the project, so reopening a project shows it
 again. *Copy* puts it on the clipboard, *Discard* removes it from the project, *Stop* cancels a running request.
 
@@ -169,6 +169,24 @@ then turn on *Local AI* in Settings. Notes:
   worth. Above 16,384 tokens the server stores its key/value cache in 8 bits (`--cache-type-k/v q8_0`) so the window fits next to the 6 GB model; that
   choice is not yet measured for speed or quality on every card. Functions that still do not fit are cut at a line break and the panel says how much the model saw.
 - The installer script needs the shared installer kit (`ai-tooling/windows/llm-installer`) next to this repository, or `-Kit` / `AISLOP_KIT`.
+
+### The alias implementation (round two)
+
+After a function is described, the model is given its code again together with that description and writes the **same code with readable names and comments**:
+the function, its parameters, locals, labels and globals get descriptive `snake_case` names (`tree_node`, not `tree node`), and comments explain the steps. It is stored
+in the project and shown in the code pane: when a function has one, *Decompiled* and *Alias* appear above the code (the alias is tagged *Inference · AI*). The alias name of
+the function appears in the **AI name** column of the Functions list and on the graph node, next to the name REA reported, which is never replaced. Nothing is written back
+to REA or Ghidra.
+
+The model's word is not taken for "same code". The app compares the alias with the original **token by token** and rejects it unless the only differences are comments and
+names, and only the names it may change: the function's own name and Ghidra's placeholders (`param_1`, `local_28`, `iVar1`, `DAT_…`, `LAB_…`). Types, operators, numbers,
+strings and real names such as `atexit` must be identical; a name must be changed the same way everywhere, two things cannot share a name, and a new name must be a readable
+`snake_case` identifier (not a keyword, not another placeholder). Other functions' placeholder names (`FUN_…`) stay unless a name was already chosen for that function, so one
+function has one name wherever it is called. A rejected reply is retried once with the reason; if that also fails nothing is saved and the panel says why. Some variables may be
+left with their placeholder names (the readable names are best effort, the identical code is not).
+
+*Write alias code* runs round two on its own for a function that already has a description. Library and runtime code (matched by Ghidra) keeps its names and gets no alias, and a
+function too long to rewrite inside the context window, or cut when it was explained, gets none either, with the reason. Discarding a description also discards its alias.
 
 ## Known limitations
 
