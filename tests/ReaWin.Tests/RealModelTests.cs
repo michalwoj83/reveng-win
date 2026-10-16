@@ -1,5 +1,6 @@
 using System.Net.Http;
 using AiSlop.LocalLlm;
+using ReaWin.Models;
 using ReaWin.Services;
 
 namespace ReaWin.Tests;
@@ -61,16 +62,19 @@ public class RealModelTests
         };
         var log = Path.Combine(Path.GetTempPath(), "reawin-llama-" + Guid.NewGuid().ToString("N") + ".log");
 
-        string text;
+        FunctionDescription described;
         using (var llm = LlmProviders.Create(settings, log))
         {
             Assert.IsType<LlamaServerProvider>(llm);
-            var description = await FunctionDescriber.DescribeAsync(
+            described = await FunctionDescriber.DescribeAsync(
                 llm, new FunctionToDescribe("FUN_140002b40", "0x140002b40", Code), settings.ContextSize);
-            Console.WriteLine(description.Text);
-            text = description.Text;
+            Console.WriteLine(described.Text);
         }
-        Assert.StartsWith("Summary:", text);                     // the requested form
+        var text = described.Text;
+        Assert.StartsWith("Name:", text);                        // the requested form
+        Assert.False(string.IsNullOrEmpty(described.Title));      // a human-readable name was given and passed the rules
+        Assert.False(string.IsNullOrEmpty(described.Brief));      // and a brief for the graph
+        Assert.True(described.Brief!.Length <= FunctionPrompts.MaxBriefChars);
         Assert.Contains("atexit", text);                          // a fact from the code survives
         Assert.Contains("FUN_14011f590", text);                   // names are kept exactly
         Assert.DoesNotContain("<think>", text);                   // no reasoning trace leaked into the panel

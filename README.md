@@ -87,7 +87,10 @@ connected knot of thousands of functions, so the view stays readable by rules th
 - **Hubs** (more than 30 neighbours, mostly C runtime helpers) are shown when they are next to the focus but not followed through; the box follows them.
 - **Imports** appear as small chips next to the focus' callees. Calls that skip a column (a caller that also calls one of the focus' callees) are drawn only
   for the node under the pointer or selected, so they do not cross the picture.
-- Click a node to select it: the panel shows REA's facts about it, the AI's one-line note if there is one (marked *Inference · AI*), what can be done with it
+- A function that was explained shows the AI's **human-readable name** on its node (tagged *AI*; the name REA reported stays on the second line) and the AI's
+  **brief** on the third line, cut with an ellipsis; hovering the node shows the complete text. Functions that were not explained show REA's name, and the
+  one-line note written as context for a neighbour, if there is one. The search box also finds an explained function by its AI name.
+- Click a node to select it: the panel shows REA's facts about it, the AI's name and brief if there are any (marked *Inference · AI*), what can be done with it
   (*Make focus*, *Open code*) and its neighbours as a list. Double-click, or Enter, makes it the focus; right-click opens the same actions. Back and forward
   go through the focus history. Drag to pan, scroll to zoom, arrow keys move between nodes, Home fits the picture.
 - Every control has a tooltip, and so does every node (what it is, how it is connected, what its badges mean, the AI note, what a click does). The **Guide**
@@ -129,7 +132,7 @@ list). If the analyzed file has changed since the project was stored, the Log ta
 ## Local AI: describe a function
 
 Select a function and press **Explain**: the local model reads the decompiled code **and its context in the program** and writes a short description
-(purpose, role, the steps that matter, the evidence, a suggested name, what is unclear). It runs on this PC through `AiSlop.LocalLlm`; nothing is sent anywhere. The description appears in its own panel tagged
+(a human-readable name, a one-sentence brief for the graph, the purpose, the role, the steps that matter, the evidence, what is unclear). It runs on this PC through `AiSlop.LocalLlm`; nothing is sent anywhere. The description appears in its own panel tagged
 **Inference · AI**, with the model's name and a reminder to check it against the code. It is saved in the project, so reopening a project shows it
 again. *Copy* puts it on the clipboard, *Discard* removes it from the project, *Stop* cancels a running request.
 

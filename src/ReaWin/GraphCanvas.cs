@@ -235,16 +235,27 @@ public sealed class GraphCanvas : FrameworkElement
         if (selected && !n.IsFocus) dc.DrawRoundedRectangle(Token("TintBrush"), null, r, 9, 9);
         if (_scale < 0.35) return;                       // a plain box when zoomed far out
 
+        // First line: the AI's human-readable title when the function has been explained (tagged "AI" at the right edge: it is an
+        // inference), otherwise the name REA reported. The REA name and address always stay on the second line, exactly as reported.
         var nameBrush = library ? "MutedBrush" : "TextBrush";
-        dc.DrawText(Text(n.Name, 12.5, nameBrush, true, inner), new Point(r.X + 10, r.Y + 8));
+        var titled = !string.IsNullOrEmpty(n.Title);
+        if (titled && _scale >= 0.5)
+        {
+            var tag = Text("AI", 10, "AccentTextBrush", true, 24);
+            dc.DrawText(tag, new Point(r.Right - 10 - tag.WidthIncludingTrailingWhitespace, r.Y + 10));
+            dc.DrawText(Text(n.Title!, 12.5, nameBrush, true, inner - 28), new Point(r.X + 10, r.Y + 8));
+        }
+        else dc.DrawText(Text(n.Name, 12.5, nameBrush, true, inner), new Point(r.X + 10, r.Y + 8));
         if (_scale < 0.5) return;
 
         var badges = new List<string>();
         if (library) badges.Add("library");
         if (n.NoCallers) badges.Add("no callers");
         if (n.Hub) badges.Add("hub");
-        var sub = n.Address + (badges.Count > 0 ? "   ·   " + string.Join(" · ", badges) : "");
+        var sub = (titled ? n.Name + "  " : "") + n.Address + (badges.Count > 0 ? "   ·   " + string.Join(" · ", badges) : "");
         dc.DrawText(Text(sub, 10.5, "MutedBrush", false, inner, mono: true), new Point(r.X + 10, r.Y + 27));
+
+        // Third line: the brief, cut with an ellipsis to the width of the node; the tooltip shows all of it.
         if (_scale >= 0.7 && !string.IsNullOrEmpty(n.Summary))
             dc.DrawText(Text("AI  " + n.Summary, 10.5, "AccentTextBrush", false, inner), new Point(r.X + 10, r.Y + 44));
     }

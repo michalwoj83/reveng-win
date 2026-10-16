@@ -144,6 +144,19 @@ public sealed record FunctionDescription(string Text, int CodeCharsSent, int Cod
 
     /// <summary>Addresses of the neighbouring functions whose summaries were in <see cref="Context"/>.</summary>
     public string[] NeighbourAddresses { get; init; } = [];
+
+    /// <summary>
+    /// A short human-readable name the model gave the function ("Initialize global list"), for people to scan lists and graphs.
+    /// An inference, shown next to the name REA reported, never instead of it. Null for descriptions written before this existed
+    /// or when the model gave none that was usable.
+    /// </summary>
+    public string? Title { get; init; }
+
+    /// <summary>
+    /// One sentence for a node of the graph: what the function is for, standing on its own. An inference. When the model gave
+    /// none, the first sentence of the purpose stands in; null for older descriptions.
+    /// </summary>
+    public string? Brief { get; init; }
 }
 
 public sealed record StringInfo(string Address, string Value);

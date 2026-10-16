@@ -46,10 +46,11 @@ public sealed record GraphOptions
 
 /// <summary>One node of the neighbourhood. <paramref name="Column"/> is the signed distance from the focus: callers are negative, callees positive.</summary>
 /// <param name="Address">As REA returned it (an import looks like <c>EXTERNAL:0x5a</c>); empty for a "+N more" node.</param>
-/// <param name="Summary">The AI's one-line note about this function, when one exists. An inference, shown as such.</param>
+/// <param name="Summary">The AI's brief for this function (a sentence that stands alone), when one exists. An inference, shown as such.</param>
+/// <param name="Title">The AI's short human-readable name for this function, when it has explained it. An inference; the name REA reported stays on the node.</param>
 /// <param name="MoreCount">For a "+N more" node, how many neighbours it stands for.</param>
 public sealed record GraphNode(string Address, string Name, GraphNodeKind Kind, int Column,
-    bool IsFocus = false, bool NoCallers = false, bool Hub = false, string? Summary = null, int MoreCount = 0)
+    bool IsFocus = false, bool NoCallers = false, bool Hub = false, string? Summary = null, int MoreCount = 0, string? Title = null)
 {
     /// <summary>Key used in layouts and selections; unique even for several "+N more" nodes.</summary>
     public string Id => Kind == GraphNodeKind.More ? $"more:{Column}" : Address;
@@ -80,10 +81,11 @@ public sealed record GraphNeighbourhood(
 public static class GraphModel
 {
     /// <param name="isLibrary">Whether Ghidra matched the function to a library (from its decompiled code, when that is known).</param>
-    /// <param name="summaryOf">The AI one-liner for a function, or null.</param>
+    /// <param name="summaryOf">The AI brief for a function, or null.</param>
+    /// <param name="titleOf">The AI's human-readable name for a function, or null (also when not given).</param>
     public static GraphNeighbourhood Build(
         string focus, CallGraphIndex graph, IReadOnlyDictionary<string, ProcedureInfo> procedures, GraphOptions options,
-        Func<string, bool> isLibrary, Func<string, string?> summaryOf)
+        Func<string, bool> isLibrary, Func<string, string?> summaryOf, Func<string, string?>? titleOf = null)
     {
         if (!procedures.TryGetValue(focus, out var focusProc)) return GraphNeighbourhood.Empty;
 
@@ -109,7 +111,8 @@ public static class GraphModel
                 IsFocus: isFocus,
                 NoCallers: graph.Knows(address) && graph.CallersOf(address).Count == 0 && name != "entry",
                 Hub: Degree(address) > options.HubDegree,
-                Summary: summaryOf(address));
+                Summary: summaryOf(address),
+                Title: titleOf?.Invoke(address));
         }
 
         var focusNode = Make(focus, 0, isFocus: true) with { Kind = GraphNodeKind.Program };

@@ -30,8 +30,11 @@ public static class FunctionDescriber
         if (FunctionPrompts.LooksRunaway(text))
             throw new DescriptionException("The model got stuck repeating itself, so its reply was discarded. Try again.");
 
+        var artifacts = FunctionPrompts.ExtractArtifacts(text);
         return new FunctionDescription(text, built.CodeCharsSent, built.CodeCharsTotal, AiProfile.ModelLabel, DateTime.UtcNow)
         {
+            Title = artifacts.Title,
+            Brief = artifacts.Brief,
             Context = context?.ForStorage ?? "",
             NeighbourAddresses = context?.NeighbourAddresses.ToArray() ?? [],
         };

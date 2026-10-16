@@ -128,6 +128,7 @@ public static class NeighbourSummaries
     /// </summary>
     public static string? OneLineFrom(FunctionDescription description)
     {
+        if (!string.IsNullOrWhiteSpace(description.Brief)) return description.Brief;   // written to stand alone: the best one-liner
         foreach (var raw in description.Text.Split('\n'))
         {
             var line = raw.Trim();

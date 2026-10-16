@@ -24,7 +24,7 @@ public class FunctionPromptsTests
         Assert.Equal(new[] { "system", "user", "assistant", "user" }, m.Select(x => x.Role).ToArray());
         Assert.Contains("Ghidra", m[0].Content);
         Assert.Contains("FUN_1400027b0", m[1].Content);     // the example input
-        Assert.StartsWith("Purpose:", m[2].Content);         // the example answer shows the form
+        Assert.StartsWith("Name:", m[2].Content);            // the example answer shows the form
         Assert.Contains("Name: FUN_140001000", m[3].Content);
         Assert.Contains("Address: 0x140001000", m[3].Content);
         Assert.Contains("FUN_1400e7870(0x40);", m[3].Content);

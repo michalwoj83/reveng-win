@@ -169,7 +169,12 @@ to check them. `dotnet test tests\ReaWin.Tests` runs the unit tests (the real-mo
   Only actions that work are listed: the planned ones (explain this function, explain with neighbours) are noted in that method and not shown until real.
 - **Keep the help in step with the tab.** Every Graph control and node has a tooltip (XAML for controls, `DescribeGraphNode` for nodes) and `GraphGuide` in
   `MainWindow.Graph.cs` is the short guide, with the legend and keys. When a control, a badge or a shortcut changes, change its tooltip and the guide with it.
-- **The graph shows REA's observations.** An AI note on a node is marked as inference. The graph is direct calls only and says so.
+- **The graph shows REA's observations.** The AI's title and brief on a node are marked as inference (an "AI" tag, accent color), and the name REA reported
+  always stays on the node, exactly as reported: a title is shown beside it, never instead of it. The graph is direct calls only and says so.
+- **Two artifacts come with every explanation:** a human-readable `Title` (2 to 6 words) and a `Brief` (one sentence, at most 20 words), both asked for in the reply
+  (`Name:` and `Brief:` lines) and read by `FunctionPrompts.ExtractArtifacts`, which cleans them (quotes, snake_case to words, placeholders and sentences dropped,
+  a missing brief falls back to the first sentence of the purpose). They are stored on `FunctionDescription` (`Title`, `Brief`), never mixed into REA's data.
+  A brief is also the one-liner handed to other functions as context (`NeighbourSummaries.OneLineFrom`).
 
 Good next features:
 - Find `main` or the WinMain-like function from the entry's callees.

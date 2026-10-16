@@ -41,12 +41,14 @@ public static class FunctionPrompts
         "- Keep every name exactly as written.\n" +
         "- Plain text only: no markdown, no # headings, no bold, no code blocks.\n\n" +
         "Reply in exactly this form:\n" +
+        "Name: a short human-readable name for the function, 2 to 6 plain words, no underscores and no code identifiers, " +
+        "for example \"Initialize global list\". For library or compiler-generated code start with \"Runtime:\".\n" +
+        "Brief: one sentence of at most 20 words saying what the function is for. It is shown on a diagram and must make sense on its own.\n" +
         "Purpose: one or two sentences: what this function is for in the program.\n" +
         "Role: where it fits: who calls it and what it relies on, in terms of what the program does.\n" +
         "Details:\n" +
         "- at most five short lines on the steps that matter\n" +
         "Evidence: the strings, imports, constants, callers or notes that support the purpose.\n" +
-        "Suggested name: a descriptive snake_case name, or \"keep\" if the function already has a real name.\n" +
         "Unclear: what cannot be told from the information given, or nothing.";
 
     internal const string Ask = "Describe this function.\n";
@@ -75,6 +77,8 @@ public static class FunctionPrompts
         "  return;\n}";
 
     internal const string ExampleReply =
+        "Name: Initialize global list\n" +
+        "Brief: Creates an empty list at startup and registers its cleanup for program exit.\n" +
         "Purpose: Sets up an empty circular list at startup and arranges for it to be freed when the program exits; probably part of program initialization.\n" +
         "Role: Called from FUN_140001a00 in a row of setup calls. It relies on an allocator and registers FUN_14011f590, which the notes say frees the list.\n" +
         "Details:\n" +
@@ -82,7 +86,6 @@ public static class FunctionPrompts
         "- Writes the block's own address at offsets 0 and 8, which looks like the head of an empty circular doubly linked list.\n" +
         "- Registers FUN_14011f590 with atexit.\n" +
         "Evidence: the self-referencing writes; the note on FUN_14011f590; the caller's sequence of setup calls.\n" +
-        "Suggested name: init_global_list\n" +
         "Unclear: What the list will hold; nothing in this function adds to it.";
 
     /// <summary>Appended to code that did not fit, so the model knows the end is missing.</summary>
@@ -221,6 +224,84 @@ public static class FunctionPrompts
         text = Bold.Replace(text, "${text}");
         text = BlankRuns.Replace(text, "\n\n");
         return text.Trim();
+    }
+
+    private static readonly Regex NameLine = new(@"^[ \t]*Name[ \t]*:[ \t]*(?<v>\S.*?)[ \t]*$", RegexOptions.Multiline | RegexOptions.IgnoreCase);
+    private static readonly Regex BriefLine = new(@"^[ \t]*Brief[ \t]*:[ \t]*(?<v>\S.*?)[ \t]*$", RegexOptions.Multiline | RegexOptions.IgnoreCase);
+    private static readonly Regex PurposeLine = new(@"^[ \t]*Purpose[ \t]*:[ \t]*(?<v>\S.*?)[ \t]*$", RegexOptions.Multiline | RegexOptions.IgnoreCase);
+    private static readonly Regex Placeholder = new(@"^(FUN|DAT|LAB|PTR|param|local|thunk)_", RegexOptions.IgnoreCase);
+
+    /// <summary>Longest title kept, in characters and in words: a name, not a sentence.</summary>
+    public const int MaxTitleChars = 60, MaxTitleWords = 8;
+
+    /// <summary>Longest brief kept; the graph shows it cut with an ellipsis and the tooltip shows all of it.</summary>
+    public const int MaxBriefChars = 200;
+
+    /// <summary>The two extra artifacts of a description: a human-readable name and a one-sentence brief for the graph.</summary>
+    public sealed record Artifacts(string? Title, string? Brief);
+
+    /// <summary>
+    /// Reads the name and the brief out of the model's (already formatted) reply and makes them safe to show: quotes and
+    /// emphasis stripped, a snake_case answer turned into words, one line, a limit on length. A name that is empty, a placeholder
+    /// such as <c>FUN_1400</c>, or a sentence is dropped rather than shown. A missing brief falls back to the first sentence of the
+    /// purpose, so a description always has something for the graph.
+    /// </summary>
+    public static Artifacts ExtractArtifacts(string formattedReply)
+    {
+        var title = CleanTitle(NameLine.Match(formattedReply) is { Success: true } n ? n.Groups["v"].Value : null);
+
+        var brief = CleanBrief(BriefLine.Match(formattedReply) is { Success: true } b ? b.Groups["v"].Value : null);
+        if (brief is null && PurposeLine.Match(formattedReply) is { Success: true } p)
+            brief = CleanBrief(FirstSentence(p.Groups["v"].Value));
+        return new Artifacts(title, brief);
+    }
+
+    /// <summary>A human-readable name, or null if the text is not usable as one.</summary>
+    internal static string? CleanTitle(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+        var text = StripDecoration(raw);
+        if (text.Length == 0) return null;
+        if (Placeholder.IsMatch(text)) return null;                              // FUN_1400027b0 is not a human-readable name
+        if (!text.Contains(' ') && text.Contains('_')) text = text.Replace('_', ' ');   // init_global_list -> init global list
+        text = Regex.Replace(text, @"\s+", " ");
+        if (text.Equals("keep", StringComparison.OrdinalIgnoreCase) || text.Equals("none", StringComparison.OrdinalIgnoreCase) ||
+            text.Equals("n/a", StringComparison.OrdinalIgnoreCase) || text.Equals("unknown", StringComparison.OrdinalIgnoreCase)) return null;
+        if (text.Length > MaxTitleChars || text.Split(' ').Length > MaxTitleWords) return null;   // a sentence, not a name
+        return char.ToUpperInvariant(text[0]) + text[1..];
+    }
+
+    /// <summary>Quotes, backticks, asterisks, spaces and a closing full stop around a value, in any nesting.</summary>
+    private static string StripDecoration(string text)
+    {
+        string before;
+        do
+        {
+            before = text;
+            text = text.Trim().Trim('"', '\'', '`', '*', '\u201c', '\u201d').TrimEnd('.');
+        } while (text != before);
+        return text.Trim();
+    }
+
+    /// <summary>One line, without quotes or emphasis, cut at a word boundary with an ellipsis if it is longer than the limit.</summary>
+    internal static string? CleanBrief(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+        var text = Regex.Replace(raw.Replace('\n', ' ').Trim().Trim('"', '`', '*', '\u201c', '\u201d').Trim(), @"\s+", " ");
+        if (text.Length == 0) return null;
+        if (text.Length > MaxBriefChars)
+        {
+            var cut = text.LastIndexOf(' ', MaxBriefChars - 1);
+            text = text[..(cut > MaxBriefChars / 2 ? cut : MaxBriefChars - 1)].TrimEnd(' ', ',', ';', ':') + "…";
+        }
+        return text;
+    }
+
+    /// <summary>The text up to the first full stop that ends a sentence (a dot followed by a space or the end), or all of it.</summary>
+    internal static string FirstSentence(string text)
+    {
+        var m = Regex.Match(text, @"^(?<s>.+?[.!?])(\s|$)");
+        return m.Success ? m.Groups["s"].Value : text;
     }
 
     /// <summary>A reply that went off the rails: the same line three times or more. Such a reply is never shown.</summary>

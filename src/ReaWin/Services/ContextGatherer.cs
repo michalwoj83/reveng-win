@@ -138,8 +138,8 @@ public static class ContextGatherer
     /// <summary>A neighbour's one line: its stored summary, or the purpose line of a full description the user already has.</summary>
     private static string? TryKnownSummary(string address, ContextSource src)
     {
-        if (src.Summaries.TryGetValue(address, out var summary)) return summary.Text;
-        if (src.Descriptions.TryGetValue(address, out var description)) return NeighbourSummaries.OneLineFrom(description);
-        return null;
+        // a description the user asked for is richer than a summary written as context, so it comes first
+        if (src.Descriptions.TryGetValue(address, out var description) && NeighbourSummaries.OneLineFrom(description) is { } line) return line;
+        return src.Summaries.TryGetValue(address, out var summary) ? summary.Text : null;
     }
 }
