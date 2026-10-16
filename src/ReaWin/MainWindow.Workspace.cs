@@ -146,8 +146,13 @@ public partial class MainWindow
             : AskRunner.Clean(WsAskBox.Text) is null ? "Type a request about the code."
             : null;
         WsRunButton.IsEnabled = why is null;
-        WsRunButton.ToolTip = why ?? "Refresh the explanation, the names and the alias code to follow the request (written if they do not exist yet). One request, not a chat.";
+        WsRunButton.ToolTip = why ?? "Apply the request (Ctrl+Enter): refresh the explanation, the names and the alias code to follow it, written if they do not exist yet. One request, not a chat.";
+        WsRunButton.Visibility = _aiBusy ? Visibility.Collapsed : Visibility.Visible;
         WsStopButton.Visibility = _aiBusy ? Visibility.Visible : Visibility.Collapsed;
+        // the field is locked while the model works, and takes the cursor back when it is done
+        var wasLocked = !WsAskBox.IsEnabled;
+        WsAskBox.IsEnabled = !_aiBusy;
+        if (wasLocked && !_aiBusy) Dispatcher.BeginInvoke(() => { if (WorkspaceOpen) WsAskBox.Focus(); });
         if (_aiBusy) return;
         // the reason applying is not possible is shown under the box, but never over a message about what a request did
         if (why is not null && (WsStatus.Text.Length == 0 || _wsStatusIsReason)) { WsStatus.Text = why; _wsStatusIsReason = true; }
@@ -198,12 +203,17 @@ public partial class MainWindow
             _dirty = true;
             await StoreProjectAsync();   // a request can take a minute: keep what it produced at once
 
+            WsAskBox.Clear();   // answered: the request is shown with the explanation it produced ("For your request: …")
             SetWsStatus(result.Alias is not null
                 ? "Done: the explanation, the names and the alias code now follow your request."
                 : $"The explanation and the names follow your request. No new alias code: {result.AliasProblem}");
         }
         catch (OperationCanceledException) { SetWsStatus("Stopped."); }
-        catch (RequestRefusedException ex) { SetWsStatus($"Not handled: {ex.Message} Ask something about this code. Nothing was changed."); }
+        catch (RequestRefusedException ex)
+        {
+            WsAskBox.Clear();   // the model answered, with a refusal
+            SetWsStatus($"Not handled: {ex.Message} Ask something about this code. Nothing was changed.");
+        }
         catch (LlmContextExceededException ex) { SetWsStatus(ex.Message); }
         catch (LlmUnavailableException ex) { Log($"AI failed:\n{ex.Message}"); SetWsStatus(ex.Message); }
         catch (DescriptionException ex) { SetWsStatus(ex.Message); }

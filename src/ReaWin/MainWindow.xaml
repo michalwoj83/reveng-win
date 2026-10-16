@@ -546,20 +546,29 @@
             <!-- the request: one at a time, about this code -->
             <Border Grid.Row="2" Style="{StaticResource Pane}" Margin="12,0,12,12" Padding="14">
                 <DockPanel>
-                    <StackPanel DockPanel.Dock="Right" Margin="14,0,0,0" Width="170">
-                        <Button x:Name="WsRunButton" Content="Apply request" Style="{StaticResource PrimaryButton}" Click="WsRun_Click" ToolTipService.ShowOnDisabled="True"
-                                IsEnabled="False" />
-                        <Button x:Name="WsStopButton" Content="Stop" Style="{StaticResource TextButton}" Margin="0,6,0,0" Visibility="Collapsed" Click="WsStop_Click" />
-                        <TextBlock Text="Ctrl+Enter applies" Style="{StaticResource CaptionText}" Margin="2,8,0,0" />
-                    </StackPanel>
                     <TextBlock DockPanel.Dock="Top" Style="{StaticResource CaptionText}" Margin="0,0,0,6" TextWrapping="Wrap"
                                Text="Ask about this code: one request, not a chat. The explanation, the names and the alias code are refreshed to follow it, and written if they do not exist yet. Only requests about this code are handled." />
                     <TextBlock DockPanel.Dock="Bottom" x:Name="WsStatus" Style="{StaticResource CaptionText}" Margin="0,6,0,0" TextWrapping="Wrap"
                                AutomationProperties.LiveSetting="Polite" />
-                    <TextBox x:Name="WsAskBox" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="64" MaxHeight="130" MaxLength="2000" VerticalScrollBarVisibility="Auto"
-                             KeyDown="WsAsk_KeyDown" TextChanged="WsAsk_Changed"
-                             ToolTip="For example: why is the second parameter checked against 0x18? / use networking terms in the names / what happens if the allocation fails? / explain the loop in the middle"
-                             AutomationProperties.Name="Request about the code" />
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBox x:Name="WsAskBox" Grid.Column="0" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="64" MaxHeight="130" MaxLength="2000" VerticalAlignment="Center"
+                                 VerticalScrollBarVisibility="Auto" KeyDown="WsAsk_KeyDown" TextChanged="WsAsk_Changed"
+                                 ToolTip="For example: why is the second parameter checked against 0x18? / use networking terms in the names / what happens if the allocation fails? / explain the loop in the middle"
+                                 AutomationProperties.Name="Request about the code" />
+                        <!-- Send, as in a chat: an icon only, centered on the field. While the model works the same place holds Stop. -->
+                        <Button x:Name="WsRunButton" Grid.Column="1" Style="{StaticResource PrimaryButton}" Width="46" Height="46" Padding="0" Margin="12,0,0,0" VerticalAlignment="Center"
+                                Click="WsRun_Click" IsEnabled="False" ToolTipService.ShowOnDisabled="True" AutomationProperties.Name="Apply request">
+                            <TextBlock Text="&#xE724;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="18" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Button>
+                        <Button x:Name="WsStopButton" Grid.Column="1" Width="46" Height="46" Padding="0" Margin="12,0,0,0" VerticalAlignment="Center" Visibility="Collapsed"
+                                Click="WsStop_Click" ToolTip="Stop. The request is dropped; what is already stored stays." AutomationProperties.Name="Stop">
+                            <TextBlock Text="&#xE71A;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="16" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Button>
+                    </Grid>
                 </DockPanel>
             </Border>
         </Grid>

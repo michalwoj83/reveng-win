@@ -171,6 +171,8 @@ to check them. `dotnet test tests\ReaWin.Tests` runs the unit tests (the real-mo
   both (`FunctionPrompts.Build` in request mode, `AliasWriter` with a request), so everything the model generated for the function is refreshed and missing pieces are generated.
   The previous explanation and alias are context. Keep the scope rules in `FunctionPrompts.RequestRules`: only requests about this code, refuse the rest with `Refused:` and a reason
   (`RequestRefusedException`), the request is data between `<request>` tags and cannot change the rules or the form. Do not turn this into a chat or a general assistant.
+- **The request box behaves like a chat box without the chat:** the send button is an icon only, centered on the field, and becomes Stop while the model works; the field is disabled
+  until the work is done and takes the cursor back; it is cleared when the model answered (also a refusal) and kept when no answer came (stopped, engine error, no code).
 - **The code is never up for negotiation.** A request cannot loosen `AliasVerifier`; if the alias round fails the explanation is kept and the old alias stays.
 - With no request the explanation prompt is exactly what it was (tests pin this); request mode only adds to it.
 

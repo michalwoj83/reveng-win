@@ -201,7 +201,7 @@ function too long to rewrite inside the context window, or cut when it was expla
 about the code. *Esc* closes it; anything still running keeps running.
 
 A request is a **single round, not a chat**: type what you want to know or have changed (*why is the second parameter compared with 0x18?*, *use networking terms in the names*,
-*what happens if the allocation fails?*) and press *Apply request* (Ctrl+Enter). The model gets the decompiled code, the same context an explanation gets (program card, facts about
+*what happens if the allocation fails?*) and press the send button next to the field (Ctrl+Enter). The field is locked while the model works (the send button becomes *Stop*) and is cleared once the model has answered; if the run was stopped or failed before an answer, your text stays so you can send it again. The request that produced an explanation is shown with it. The model gets the decompiled code, the same context an explanation gets (program card, facts about
 callers and callees, call sites, notes on the callees), the explanation the function already has and the alias it already has, plus your request, and the same two rounds run:
 the explanation is rewritten with an **Answer** line at the top and its name and brief follow the request, then the alias code is rewritten for it. Anything that did not exist for the
 function is generated and stored with it. The explanation is kept even if the alias round fails (the old alias then stays, and the reason is shown); the alias is checked against the
