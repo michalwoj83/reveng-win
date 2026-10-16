@@ -275,13 +275,13 @@
                                         </Border>
 
                                         <DockPanel Grid.Row="3" Margin="0,8,0,0" LastChildFill="True">
-                                            <Button DockPanel.Dock="Left" x:Name="ExplainButton" Content="Explain" Style="{StaticResource TonalButton}" IsEnabled="False"
+                                            <Button DockPanel.Dock="Left" x:Name="ExplainButton" ToolTipService.ShowOnDisabled="True" Content="Explain" Style="{StaticResource TonalButton}" IsEnabled="False"
                                                     Margin="0,0,8,0" Click="Explain_Click" />
                                             <Button DockPanel.Dock="Left" x:Name="AiStopButton" Content="Stop" Style="{StaticResource TextButton}" MinHeight="28"
                                                     Visibility="Collapsed" Margin="0,0,8,0" Click="AiStop_Click" />
-                                            <Button DockPanel.Dock="Left" x:Name="AliasButton" Content="Write alias code" Style="{StaticResource TextButton}" MinHeight="28"
+                                            <Button DockPanel.Dock="Left" x:Name="AliasButton" ToolTipService.ShowOnDisabled="True" Content="Write alias code" Style="{StaticResource TextButton}" MinHeight="28"
                                                     IsEnabled="False" Margin="0,0,8,0" Click="AliasButton_Click" />
-                                            <Button DockPanel.Dock="Left" x:Name="ShowInGraphButton" Content="Show in graph" Style="{StaticResource TextButton}" MinHeight="28"
+                                            <Button DockPanel.Dock="Left" x:Name="ShowInGraphButton" ToolTipService.ShowOnDisabled="True" Content="Show in graph" Style="{StaticResource TextButton}" MinHeight="28"
                                                     IsEnabled="False" Margin="0,0,8,0" Click="ShowInGraph_Click"
                                                     ToolTip="Open this function in the Graph tab: who calls it and what it calls." />
                                             <TextBlock x:Name="AiHint" Style="{StaticResource CaptionText}" VerticalAlignment="Center"

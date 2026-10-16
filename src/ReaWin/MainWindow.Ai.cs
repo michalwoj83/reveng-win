@@ -103,10 +103,18 @@ public partial class MainWindow
         ExplainButton.IsEnabled = !_aiBusy && CurrentAi.Enabled && fault is null && proc is { IsImport: false };
         var hasDescription = proc is not null && _descriptions.ContainsKey(proc.Address);
         var library = proc is not null && _decompiled.TryGetValue(proc.Address, out var shownCode) && FunctionContextBuilder.IsLibraryCode(shownCode);
-        AliasButton.IsEnabled = !_aiBusy && CurrentAi.Enabled && fault is null && proc is { IsImport: false } && hasDescription && !library;
-        AliasButton.ToolTip = library ? "Library and runtime code keeps its names."
+        // the tooltip always says why the button is off (a disabled button shows it because ShowOnDisabled is set in the XAML)
+        var aliasWhyNot = _aiBusy ? "The AI is busy with something else; wait for it to finish."
+            : !CurrentAi.Enabled ? "AI is off. Turn it on in Settings."
+            : fault is not null ? fault
+            : proc is null ? "Select a function first."
+            : proc.IsImport ? "Imports have no code in this file, so there is nothing to write an alias for."
             : !hasDescription ? "Explain the function first: the alias is written from its description."
-            : "Write the same code again with readable names and comments (checked by the app against the original). Also written automatically after Explain.";
+            : library ? "This is library or runtime code (matched by Ghidra), which keeps its names, so no alias is written for it."
+            : null;
+        AliasButton.IsEnabled = aliasWhyNot is null;
+        AliasButton.ToolTip = aliasWhyNot ??
+            "Write the same code again with readable names and comments (checked by the app against the original). Also written automatically after Explain.";
         ShowInGraphButton.IsEnabled = _hasResults && proc is { IsImport: false };
         ExplainButton.ToolTip = hint;
         AiHint.Text = hint;
