@@ -28,6 +28,7 @@ src/ReaWin/
   MainWindow.Ai.cs          the Explain button, the AI panel, the provider lifecycle
   scripts/Install-Ai.ps1    installs the PrismML llama.cpp build and the Bonsai model (pins in scripts/ai-pins.json)
   tests/ReaWin.Tests        prompts, clean-up, settings and project compatibility, AI files; real-model test is env-gated
+  installer/                ReaWin.iss + build-installer.ps1: per-user Inno Setup using the ai-tooling installer kit (pins: scripts/ai-pins.json)
   SettingsWindow.xaml(.cs)  pick the Ghidra folder, a JDK 21+, the appearance, and the local AI options
   ThemeManager.cs           light/dark/follow-Windows: swaps the token dictionary, dark title bar
   Themes/Tokens.*.xaml      semantic color brushes (light, dark); same keys in both

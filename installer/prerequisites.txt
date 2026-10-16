@@ -1,0 +1,12 @@
+Reverse.Engineer.AI is a front end. The analysis itself is done by tools that Setup does not install. Before you analyze a program, install:
+
+  - Node.js 22.19+ or 24.11+
+  - REA:  npm install --global rea-agents
+  - Ghidra 12.1.x (a release download, not a source clone)
+  - A full JDK 21 or newer
+
+After the first start, open Settings and point the app at Ghidra and the JDK; "Run rea doctor" checks the setup.
+
+Setup does install the local AI that describes functions: a llama.cpp build and a language model of about 5.9 GB. It is downloaded once and checked against a fixed SHA-256 before anything is installed, so Setup cannot finish without it. The AI runs on this computer; nothing is sent anywhere. It stays off until you turn it on in Settings.
+
+The analysed programs are never executed. Setup is not code-signed, so Windows SmartScreen may warn you.

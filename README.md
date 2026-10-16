@@ -28,6 +28,19 @@ dotnet run
 
 Open **REA / Ghidra settings**, check the paths, and use **Run rea doctor** once.
 
+## Installer
+
+```powershell
+./installer/build-installer.ps1            # artifacts\ReverseEngineerAI-Setup-<version>.exe, about 560 MB
+./installer/build-installer.ps1 -Engine cuda-12.4   # or cpu, vulkan
+```
+
+A per-user Inno Setup installer (no admin prompt). It bundles the self-contained app and the pinned PrismML llama.cpp build (`ai\`), and
+downloads the 5.9 GB model during Setup, verified by SHA-256 (offline: `Setup.exe /MODEL=<file>`). It does not install Node, REA, Ghidra or a
+JDK; the first page of Setup says so. Settings and projects in `%LocalAppData%\ReaWin` survive update and uninstall. Needs Inno Setup 6 and
+the shared installer kit (`-Kit`, `AISLOP_KIT`, or `ai-tooling` next to this repository). The version is `<Version>` in `ReaWin.csproj`.
+Setup is not code-signed, so SmartScreen may warn.
+
 ## How the "which file is the entry?" hint works
 
 `Services/EntryRanker.cs` scores each binary 0-100 and shows the reasons in the **Why this file** tab:

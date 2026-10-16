@@ -3,8 +3,8 @@ using AiSlop.LocalLlm;
 namespace ReaWin.Services;
 
 /// <summary>
-/// Finds the AI files (<c>llama-server.exe</c> and <c>model\default.gguf</c>). A future installer puts them in <c>&lt;app&gt;\ai</c>;
-/// until then <c>scripts\Install-Ai.ps1</c> puts them in the user's folder. The first complete location wins.
+/// Finds the AI files (<c>llama-server.exe</c> and <c>model\default.gguf</c>). The installer puts them in <c>&lt;app&gt;\ai</c>;
+/// for a build run from source, <c>scripts\Install-Ai.ps1</c> puts them in the user's folder. The first complete location wins.
 /// </summary>
 public static class AiFiles
 {
