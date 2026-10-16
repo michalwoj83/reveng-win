@@ -265,27 +265,38 @@
                                     <Button x:Name="GraphForwardButton" Content="▶" Style="{StaticResource TextButton}" MinHeight="28" Padding="10,0" Margin="0,0,10,0"
                                             IsEnabled="False" Click="GraphForward_Click" ToolTip="Forward" AutomationProperties.Name="Forward" />
                                     <TextBlock x:Name="GraphFocusText" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,14,0" MaxWidth="320"
-                                               TextTrimming="CharacterEllipsis" Text="No function" />
+                                               TextTrimming="CharacterEllipsis" Text="No function" ToolTip="The focus: the function the graph is centered on, with its address. Callers are drawn to its left, callees to its right."/>
                                     <TextBox x:Name="GraphFindBox" Width="190" Margin="0,0,14,0" KeyDown="GraphFind_KeyDown"
-                                             ToolTip="Type part of a name or an address and press Enter" AutomationProperties.Name="Find a function to focus" />
-                                    <TextBlock Text="Depth" Style="{StaticResource MutedText}" VerticalAlignment="Center" Margin="0,0,6,0" />
-                                    <RadioButton x:Name="GraphDepth1" Content="1" GroupName="GraphDepth" IsChecked="True" Margin="0,0,8,0" VerticalAlignment="Center" Click="GraphOptions_Changed" />
-                                    <RadioButton x:Name="GraphDepth2" Content="2" GroupName="GraphDepth" Margin="0,0,8,0" VerticalAlignment="Center" Click="GraphOptions_Changed" />
-                                    <RadioButton x:Name="GraphDepth3" Content="3" GroupName="GraphDepth" Margin="0,0,14,0" VerticalAlignment="Center" Click="GraphOptions_Changed" />
-                                    <TextBlock Text="Show" Style="{StaticResource MutedText}" VerticalAlignment="Center" Margin="0,0,6,0" />
-                                    <RadioButton x:Name="GraphBoth" Content="Both" GroupName="GraphDirection" IsChecked="True" Margin="0,0,8,0" VerticalAlignment="Center" Click="GraphOptions_Changed" />
-                                    <RadioButton x:Name="GraphCallersOnly" Content="Callers" GroupName="GraphDirection" Margin="0,0,8,0" VerticalAlignment="Center" Click="GraphOptions_Changed" />
-                                    <RadioButton x:Name="GraphCalleesOnly" Content="Callees" GroupName="GraphDirection" Margin="0,0,14,0" VerticalAlignment="Center" Click="GraphOptions_Changed" />
+                                             ToolTip="Find a function and make it the focus. Type part of a name or a whole address and press Enter. Only program functions are searched." AutomationProperties.Name="Find a function to focus" />
+                                    <TextBlock Text="Depth" Style="{StaticResource MutedText}" VerticalAlignment="Center" Margin="0,0,6,0" ToolTip="How many calls away from the focus to draw. Each step adds a column on each side." />
+                                    <RadioButton x:Name="GraphDepth1" Content="1" GroupName="GraphDepth" IsChecked="True" Margin="0,0,8,0" VerticalAlignment="Center" Click="GraphOptions_Changed" ToolTip="Direct callers and direct callees only. The most readable view."/>
+                                    <RadioButton x:Name="GraphDepth2" Content="2" GroupName="GraphDepth" Margin="0,0,8,0" VerticalAlignment="Center" Click="GraphOptions_Changed" ToolTip="Two calls away: callers of callers and callees of callees."/>
+                                    <RadioButton x:Name="GraphDepth3" Content="3" GroupName="GraphDepth" Margin="0,0,14,0" VerticalAlignment="Center" Click="GraphOptions_Changed" ToolTip="Three calls away. Wide: best on a function with few neighbours."/>
+                                    <TextBlock Text="Show" Style="{StaticResource MutedText}" VerticalAlignment="Center" Margin="0,0,6,0" ToolTip="Which side of the focus to draw." />
+                                    <RadioButton x:Name="GraphBoth" Content="Both" GroupName="GraphDirection" IsChecked="True" Margin="0,0,8,0" VerticalAlignment="Center" Click="GraphOptions_Changed" ToolTip="Callers on the left and callees on the right."/>
+                                    <RadioButton x:Name="GraphCallersOnly" Content="Callers" GroupName="GraphDirection" Margin="0,0,8,0" VerticalAlignment="Center" Click="GraphOptions_Changed" ToolTip="Only the functions that call the focus: who uses it, and from where."/>
+                                    <RadioButton x:Name="GraphCalleesOnly" Content="Callees" GroupName="GraphDirection" Margin="0,0,14,0" VerticalAlignment="Center" Click="GraphOptions_Changed" ToolTip="Only the functions the focus calls: what it relies on."/>
                                     <CheckBox x:Name="GraphLibraryBox" Content="Library &amp; runtime" Margin="0,0,12,0" VerticalAlignment="Center" Click="GraphOptions_Changed"
-                                              ToolTip="Functions Ghidra matched to a library (C runtime and the like). Hidden by default." />
-                                    <CheckBox x:Name="GraphImportsBox" Content="Imports" IsChecked="True" Margin="0,0,12,0" VerticalAlignment="Center" Click="GraphOptions_Changed" />
+                                              ToolTip="Show functions Ghidra matched to a known library (the C runtime and the like). Hidden by default because they are called from everywhere and bury the program own code. Hidden ones are counted in the line below the graph." />
+                                    <CheckBox x:Name="GraphImportsBox" Content="Imports" IsChecked="True" Margin="0,0,12,0" VerticalAlignment="Center" Click="GraphOptions_Changed" ToolTip="Show the Windows and library functions the focus calls (KERNEL32, USER32 and so on) as small chips. They have no code in this file and are never followed further."/>
                                     <CheckBox x:Name="GraphHubsBox" Content="Hubs" Margin="0,0,12,0" VerticalAlignment="Center" Click="GraphOptions_Changed"
-                                              ToolTip="Follow calls through functions that have very many callers or callees. Off keeps the picture readable." />
+                                              ToolTip="Follow calls through hubs: functions with more than 30 callers and callees, such as allocation or error helpers. Off by default: a hub next to the focus is still shown, but nothing is drawn beyond it, so one helper cannot pull in half the program." />
                                     <Button x:Name="GraphFitButton" Content="Fit" Style="{StaticResource TextButton}" MinHeight="28" Padding="10,0" Click="GraphFit_Click"
-                                            ToolTip="Fit the whole picture in the window (Home)" />
+                                            ToolTip="Fit the picture in the window again, centered on the focus (Home). Dragging and scrolling change the view; this resets it." />
+                                    <Button x:Name="GraphGuideButton" Content="Guide" Style="{StaticResource TextButton}" MinHeight="28" Padding="10,0" Margin="4,0,0,0"
+                                            Click="GraphGuide_Click" ToolTip="A short guide to reading and exploring the graph" />
                                 </WrapPanel>
 
-                                <TextBlock DockPanel.Dock="Bottom" x:Name="GraphStatus" Margin="2,8,0,0" Style="{StaticResource CaptionText}" TextWrapping="Wrap" />
+                                <TextBlock DockPanel.Dock="Bottom" x:Name="GraphStatus" Margin="2,8,0,0" Style="{StaticResource CaptionText}" TextWrapping="Wrap" ToolTip="What is shown and what is left out: hidden library functions, collapsed hubs, nodes behind +N more. Nothing disappears without being counted here."/>
+
+                                <!-- the short guide, built from GraphGuide in MainWindow.Graph.cs; opens by itself while there is no focus -->
+                                <Border DockPanel.Dock="Top" x:Name="GraphGuidePanel" Style="{StaticResource Pane}" Padding="14,10" Margin="0,0,0,8" Visibility="Collapsed">
+                                    <DockPanel>
+                                        <Button DockPanel.Dock="Right" Content="Hide" Style="{StaticResource TextButton}" MinHeight="26" Padding="10,0" VerticalAlignment="Top"
+                                                Click="GraphGuide_Click" />
+                                        <StackPanel x:Name="GraphGuideBody" />
+                                    </DockPanel>
+                                </Border>
 
                                 <Grid>
                                     <Grid.ColumnDefinitions>
@@ -316,14 +327,14 @@
                                     <!-- the selected node: observed facts, the AI note if there is one, what can be done with it, its neighbours -->
                                     <Border Grid.Column="2" Style="{StaticResource Pane}" Padding="12">
                                         <DockPanel>
-                                            <TextBlock DockPanel.Dock="Top" x:Name="GraphNodeName" FontWeight="SemiBold" FontSize="14" TextWrapping="Wrap" Text="Nothing selected" />
-                                            <TextBlock DockPanel.Dock="Top" x:Name="GraphNodeAddress" Style="{StaticResource CaptionText}" FontFamily="{StaticResource MonoFont}" Margin="0,2,0,6" />
+                                            <TextBlock DockPanel.Dock="Top" x:Name="GraphNodeName" FontWeight="SemiBold" FontSize="14" TextWrapping="Wrap" Text="Nothing selected" ToolTip="The selected node. Click a node in the graph, or an entry in the list below, to select it."/>
+                                            <TextBlock DockPanel.Dock="Top" x:Name="GraphNodeAddress" Style="{StaticResource CaptionText}" FontFamily="{StaticResource MonoFont}" Margin="0,2,0,6" ToolTip="The address exactly as REA reports it."/>
                                             <StackPanel DockPanel.Dock="Top" x:Name="GraphNodeDetails" Visibility="Collapsed">
                                                 <Border Style="{StaticResource Pill}" Background="Transparent" BorderThickness="1" BorderBrush="{DynamicResource LineBrush}"
                                                         ToolTip="Facts from REA and Ghidra; nothing here is inferred by this app or the AI.">
                                                     <TextBlock Text="Observed · REA" FontSize="11" FontWeight="SemiBold" Style="{StaticResource MutedText}" />
                                                 </Border>
-                                                <TextBlock x:Name="GraphNodeFacts" Style="{StaticResource CaptionText}" Margin="0,6,0,0" />
+                                                <TextBlock x:Name="GraphNodeFacts" Style="{StaticResource CaptionText}" Margin="0,6,0,0" ToolTip="What REA and Ghidra report about this function: what kind it is, how many functions call it and how many it calls."/>
                                                 <StackPanel x:Name="GraphNodeAi" Margin="0,10,0,0" Visibility="Collapsed">
                                                     <Border Style="{StaticResource Pill}" Background="Transparent" BorderThickness="1" BorderBrush="{DynamicResource WarnBrush}"
                                                             ToolTip="The model note about this function, not something REA observed.">
@@ -335,9 +346,9 @@
                                                 <WrapPanel x:Name="GraphActionsPanel" Margin="0,12,0,0" />
                                             </StackPanel>
                                             <TextBlock DockPanel.Dock="Top" x:Name="GraphNeighboursLabel" Text="Neighbours" Style="{StaticResource MutedText}" FontWeight="Medium"
-                                                       Margin="0,12,0,4" Visibility="Collapsed" />
+                                                       Margin="0,12,0,4" Visibility="Collapsed" ToolTip="The same neighbours as the graph, as a list. Reachable with the keyboard and by screen readers."/>
                                             <ListBox x:Name="GraphNeighbours" Visibility="Collapsed" MouseDoubleClick="GraphNeighbours_DoubleClick" KeyDown="GraphNeighbours_KeyDown"
-                                                     AutomationProperties.Name="Neighbours of the selected function" />
+                                                     AutomationProperties.Name="Neighbours of the selected function" ToolTip="Every caller and callee of the selected function, also those not drawn. Double-click or press Enter to make one the focus."/>
                                         </DockPanel>
                                     </Border>
                                 </Grid>

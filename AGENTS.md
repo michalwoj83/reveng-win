@@ -167,6 +167,8 @@ to check them. `dotnet test tests\ReaWin.Tests` runs the unit tests (the real-mo
 - **Node actions are a list, not code in the canvas.** `MainWindow.Graph.cs` holds `_graphActions` (`GraphAction`: id, label, availability, run). The side panel
   and the right-click pop-up are both built from it. To add an action (explain, copy, mark) add one entry in `RegisterGraphActions`; do not touch the canvas.
   Only actions that work are listed: the planned ones (explain this function, explain with neighbours) are noted in that method and not shown until real.
+- **Keep the help in step with the tab.** Every Graph control and node has a tooltip (XAML for controls, `DescribeGraphNode` for nodes) and `GraphGuide` in
+  `MainWindow.Graph.cs` is the short guide, with the legend and keys. When a control, a badge or a shortcut changes, change its tooltip and the guide with it.
 - **The graph shows REA's observations.** An AI note on a node is marked as inference. The graph is direct calls only and says so.
 
 Good next features:

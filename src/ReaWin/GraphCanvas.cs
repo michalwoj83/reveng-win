@@ -45,6 +45,12 @@ public sealed class GraphCanvas : FrameworkElement
     /// <summary>A "+N more" node was clicked or activated.</summary>
     public event Action<GraphNode>? MoreRequested;
 
+    /// <summary>
+    /// Supplies the tooltip for the node under the pointer. The host provides it so the canvas stays free of what a node means
+    /// (callers, AI notes, kinds); null or empty text shows no tooltip.
+    /// </summary>
+    public Func<GraphNode, string?>? DescribeNode { get; set; }
+
     public GraphCanvas()
     {
         Focusable = true;
@@ -334,9 +340,15 @@ public sealed class GraphCanvas : FrameworkElement
             }
             return;
         }
-        var id = NodeAt(p)?.Node.Id;
+        var hit = NodeAt(p);
+        var id = hit?.Node.Id;
         Cursor = id is null ? Cursors.Arrow : Cursors.Hand;
-        if (id != _hoverId) { _hoverId = id; InvalidateVisual(); }
+        if (id != _hoverId)
+        {
+            _hoverId = id;
+            ToolTip = hit is null ? null : DescribeNode?.Invoke(hit.Node);
+            InvalidateVisual();
+        }
     }
 
     protected override void OnMouseLeftButtonUp(MouseButtonEventArgs e)
@@ -351,6 +363,7 @@ public sealed class GraphCanvas : FrameworkElement
     {
         if (_hoverId is null) return;
         _hoverId = null;
+        ToolTip = null;
         InvalidateVisual();
     }
 

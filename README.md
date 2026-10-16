@@ -90,6 +90,9 @@ connected knot of thousands of functions, so the view stays readable by rules th
 - Click a node to select it: the panel shows REA's facts about it, the AI's one-line note if there is one (marked *Inference · AI*), what can be done with it
   (*Make focus*, *Open code*) and its neighbours as a list. Double-click, or Enter, makes it the focus; right-click opens the same actions. Back and forward
   go through the focus history. Drag to pan, scroll to zoom, arrow keys move between nodes, Home fits the picture.
+- Every control has a tooltip, and so does every node (what it is, how it is connected, what its badges mean, the AI note, what a click does). The **Guide**
+  button opens a short eight-step walkthrough with a legend and the keyboard shortcuts; it opens by itself while no function is chosen and closes by itself
+  when one is.
 - The graph holds **direct calls only**. Calls through pointers, vtables and callbacks are not in it: about a third of a typical program's functions have no direct
   caller, and only a fraction is reachable from the entry point, so the graph is not a map of the whole program. A function with no direct callers says so.
 

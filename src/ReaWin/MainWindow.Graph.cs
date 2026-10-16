@@ -43,7 +43,89 @@ public partial class MainWindow
         GraphView.NodeActivated += node => { if (IsFunction(node)) FocusGraph(node.Address); };
         GraphView.MoreRequested += _ => { _graphMaxPerColumn += GraphOptions.MoreStep; RebuildGraph(resetView: false); };
         GraphView.NodeContextRequested += ShowGraphMenu;
+        GraphView.DescribeNode = DescribeGraphNode;
+        BuildGraphGuide();
         ResetGraph();
+    }
+
+    // ---- the guide and the tooltips ----------------------------------------------------------------
+
+    private bool _graphGuideAuto;   // the guide opened by itself (no focus yet) and closes by itself when a function is chosen
+
+    /// <summary>The short guide, in the order the user meets things. Kept here as data so it is easy to keep in step with the tab.</summary>
+    private static readonly (string Title, string Text)[] GraphGuide =
+    [
+        ("Pick a function.", "Press Show in graph on the Functions tab, type a name or an address in the search box and press Enter, or choose one of the suggestions."),
+        ("Read the picture.", "Callers are on the left, the focus is in the middle, callees are on the right. An arrow goes from the function that calls to the function that is called."),
+        ("Select to learn more.", "Click a node: the panel on the right shows what REA reports about it, the AI note if you have explained it, and what you can do with it. Hovering a node lights up its connections and shows a short description."),
+        ("Move around.", "Double-click a node, press Enter or choose Make focus to centre the graph on it. ◀ ▶ go back and forward through the functions you visited. Drag to pan, scroll to zoom, Fit resets the view."),
+        ("Widen or narrow.", "Depth shows functions further away; Callers and Callees show one side only; +N more shows more of a long column."),
+        ("Cut the noise.", "Library and runtime functions are hidden, hubs are not followed and imports are small chips. The line under the graph counts everything left out, and the boxes bring it back."),
+        ("Go to the code.", "Open code jumps to the function on the Functions tab, where Explain describes it. Descriptions show up here as AI notes on the nodes."),
+        ("Know the limits.", "Only direct calls are drawn. Calls through pointers, vtables and callbacks are missing, so a function marked \"no callers\" may still be used."),
+    ];
+
+    private const string GraphLegend =
+        "Solid box: program function  ·  dashed box: library or runtime  ·  small pill ⌁: import  ·  violet outline: focus or selection  ·  violet lines: calls of the selected node  ·  " +
+        "hub: very many neighbours  ·  no callers: no direct caller.";
+
+    private const string GraphKeys = "Keys: arrow keys move between nodes  ·  Enter makes a node the focus  ·  + and − zoom  ·  Home fits  ·  right-click or the menu key opens the node actions.";
+
+    private void BuildGraphGuide()
+    {
+        GraphGuideBody.Children.Clear();
+        GraphGuideBody.Children.Add(new TextBlock { Text = "How to use the graph", FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 6) });
+        var number = 1;
+        foreach (var (title, text) in GraphGuide)
+        {
+            var block = new TextBlock { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 3) };
+            block.Inlines.Add(new System.Windows.Documents.Run($"{number++}. {title}  ") { FontWeight = FontWeights.SemiBold });
+            var body = new System.Windows.Documents.Run(text);
+            body.SetResourceReference(System.Windows.Documents.TextElement.ForegroundProperty, "MutedBrush");
+            block.Inlines.Add(body);
+            GraphGuideBody.Children.Add(block);
+        }
+        foreach (var line in new[] { GraphLegend, GraphKeys })
+        {
+            var caption = new TextBlock { Text = line, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 0), FontSize = 12 };
+            caption.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
+            GraphGuideBody.Children.Add(caption);
+        }
+    }
+
+    private void GraphGuide_Click(object sender, RoutedEventArgs e)
+    {
+        _graphGuideAuto = false;   // the user decided; it stays as they left it
+        GraphGuidePanel.Visibility = GraphGuidePanel.Visibility == Visibility.Visible ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    /// <summary>The tooltip of a node: what it is, how it is connected, what its badges mean, the AI note, and what a click does.</summary>
+    private string? DescribeGraphNode(GraphNode node)
+    {
+        if (node.Kind == GraphNodeKind.More)
+            return $"{node.MoreCount} more neighbours are not drawn, to keep the picture readable.\nClick to show up to {GraphOptions.MoreStep} more.";
+
+        var callers = _graphIndex?.CallersOf(node.Address).Count ?? 0;
+        var lines = new List<string> { node.Name };
+        if (node.Kind == GraphNodeKind.Import)
+        {
+            lines.Add("Imported function: it has no code in this file.");
+            lines.Add($"Called by {callers} program function{(callers == 1 ? "" : "s")}.");
+            lines.Add("Click to select it and see who calls it.");
+            return string.Join("\n", lines);
+        }
+
+        lines.Add(node.Address);
+        lines.Add(node.Kind == GraphNodeKind.Library
+            ? "Library or runtime function (matched by Ghidra's signature database)."
+            : node.IsFocus ? "The focus: the graph is centered on this function." : "Program function.");
+        var callees = _graphIndex?.CalleesOf(node.Address).Count ?? 0;
+        lines.Add($"Called by {callers} · calls {callees}.");
+        if (node.NoCallers) lines.Add("No direct callers: reached through a pointer, vtable or callback, or unused.");
+        if (node.Hub) lines.Add("Hub: very many neighbours, so the graph does not follow calls through it.");
+        if (!string.IsNullOrEmpty(node.Summary)) lines.Add("AI note (inference): " + node.Summary);
+        lines.Add(node.IsFocus ? "Click to select it." : "Click to select · double-click to make it the focus.");
+        return string.Join("\n", lines);
     }
 
     /// <summary>
@@ -232,6 +314,7 @@ public partial class MainWindow
         _graphHood = hood;
         GraphEmpty.Visibility = Visibility.Collapsed;
         GraphView.Visibility = Visibility.Visible;
+        if (_graphGuideAuto) { GraphGuidePanel.Visibility = Visibility.Collapsed; _graphGuideAuto = false; }
         GraphView.SetLayout(layout, resetView);
 
         // keep the selection if it is still drawn; otherwise the focus is the selected node
@@ -283,6 +366,8 @@ public partial class MainWindow
             return;
         }
 
+        // nothing chosen yet: the guide opens by itself (and closes by itself once a function is chosen)
+        if (GraphGuidePanel.Visibility != Visibility.Visible) { GraphGuidePanel.Visibility = Visibility.Visible; _graphGuideAuto = true; }
         GraphEmptyTitle.Text = "Choose a function";
         GraphEmptyText.Text = "Select a function on the Functions tab and press Show in graph, search for one above, or start from one of these.";
         FillStartList();
