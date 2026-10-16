@@ -18,10 +18,23 @@ public static class AiProfile
     public const string ModelLabel = "Ternary Bonsai 2 27B";
 
     /// <summary>
-    /// Context window in tokens. Enough for a large decompiled function plus the instructions and the reply; the model's
-    /// attention is mostly linear, so a window this size stays small in memory. Larger functions are cut (and the UI says so).
+    /// Context window in tokens. Room for the program card, the facts and notes about a function's neighbours, the function
+    /// itself (even a 9,000-token one) and the reply. Most requests use a fraction of it: on an 8 GB card the prompt is read at
+    /// roughly 180 tokens a second, so what is sent is chosen for relevance, not to fill the window.
     /// </summary>
-    public const int DefaultContextSize = 8192;
+    public const int DefaultContextSize = 32768;
+
+    /// <summary>The window used before context was added. A settings file that still says so is moved to the new default once.</summary>
+    internal const int PreviousDefaultContextSize = 8192;
+
+    /// <summary>Version of the defaults in <see cref="ReaSettings.Revision"/>: 1 = the 32,768-token window.</summary>
+    public const int SettingsRevision = 1;
+
+    /// <summary>
+    /// Above this window the key/value cache is stored in 8 bits. The model has 16 full-attention layers whose cache costs 64 KiB per
+    /// token in 16-bit form, 2 GiB at 32,768 tokens, which does not fit beside 6 GB of weights on an 8 GB card. 8-bit halves that.
+    /// </summary>
+    internal const int QuantizedCacheAbove = 16384;
 
     /// <summary>Room kept for the description (a summary, a few bullets, the calls, what is unclear).</summary>
     public const int ReplyTokens = 700;
@@ -29,8 +42,25 @@ public static class AiProfile
     /// <summary>Low temperature: the job is to read code faithfully, not to be creative.</summary>
     public const double Temperature = 0.3;
 
-    /// <summary>Flash attention, as the model card runs it (<c>-fa on</c>).</summary>
-    public static IReadOnlyList<string> ServerArguments { get; } = ["-fa", "on"];
+    /// <summary>
+    /// Server arguments: flash attention as the model card runs it (<c>-fa on</c>, also required for a quantized value cache),
+    /// and an 8-bit key/value cache when the window is large (see <see cref="QuantizedCacheAbove"/>).
+    /// </summary>
+    public static IReadOnlyList<string> ServerArgumentsFor(int contextSize) =>
+        contextSize > QuantizedCacheAbove
+            ? ["-fa", "on", "--cache-type-k", "q8_0", "--cache-type-v", "q8_0"]
+            : ["-fa", "on"];
+
+    /// <summary>
+    /// Carries settings written under older defaults forward: a file that still holds the old 8,192-token window (the old default,
+    /// never a choice the app asked about) gets the new one, once. Later changes are the user's and are left alone.
+    /// </summary>
+    public static ReaSettings Migrate(ReaSettings settings)
+    {
+        if (settings.Revision >= SettingsRevision) return settings;
+        var ai = settings.Ai is { ContextSize: PreviousDefaultContextSize } old ? old with { ContextSize = DefaultContextSize } : settings.Ai;
+        return settings with { Ai = ai, Revision = SettingsRevision };
+    }
 
     /// <summary>
     /// Request fields for this model: no reasoning trace, and the model card's non-thinking sampling (top_p, top_k).
@@ -52,7 +82,7 @@ public static class AiProfile
 
     /// <summary>The settings the engine runs with: the installed paths and this model's server arguments added.</summary>
     public static AiSettings ForEngine(AiSettings settings, AiInstallation files) =>
-        files.Apply(settings) with { ExtraArguments = ServerArguments };
+        files.Apply(settings) with { ExtraArguments = ServerArgumentsFor(settings.ContextSize) };
 
     /// <summary>
     /// The package's messages say "reinstall the app" or "run the app's setup", which fits an installed product. This app is

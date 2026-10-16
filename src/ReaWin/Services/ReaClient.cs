@@ -25,7 +25,8 @@ public sealed class ReaClient(ReaSettings settings)
             GhidraInstallDir: Environment.GetEnvironmentVariable("GHIDRA_INSTALL_DIR") ?? "",
             JavaHome: Environment.GetEnvironmentVariable("JAVA_HOME") ?? "",
             ReaScript: Path.Combine(appData, "npm", "node_modules", "rea-agents", "scripts", "rea.mjs"),
-            NodeExe: "node");
+            NodeExe: "node",
+            Revision: AiProfile.SettingsRevision);
     }
 
     /// <summary>Raw evidence JSON for one REA command, e.g. ("analyze", path).</summary>

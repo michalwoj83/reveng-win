@@ -131,6 +131,49 @@ public sealed class ReaSession : IDisposable
         return results;
     }
 
+    /// <summary>
+    /// Reads the direct callees of every address in <paramref name="addresses"/> with REA's <c>procedure_callees</c>. After
+    /// Ghidra's analysis each call is a few milliseconds, so a few thousand functions take seconds when several requests are
+    /// in flight (overlapping requests inside one session are fine). A function REA cannot answer for is left out of the
+    /// result, so the graph says "unknown" for it instead of "calls nothing". Cancellation stops between requests.
+    /// </summary>
+    public async Task<CallGraph> CallGraphAsync(IReadOnlyList<string> addresses, IProgress<int>? progress, CancellationToken ct)
+    {
+        var callees = new ConcurrentDictionary<string, string[]>(StringComparer.Ordinal);
+        var next = -1;
+        var done = 0;
+
+        async Task WorkerAsync()
+        {
+            while (true)
+            {
+                ct.ThrowIfCancellationRequested();
+                var i = Interlocked.Increment(ref next);
+                if (i >= addresses.Count) return;
+                var address = addresses[i];
+                try
+                {
+                    using var doc = await CallAsync("procedure_callees",
+                        new Dictionary<string, object?> { ["procedure"] = address }, ct).ConfigureAwait(false);
+                    if (doc.RootElement.TryGetProperty("normalized_result", out var n) && n.ValueKind == JsonValueKind.Array)
+                        callees[address] = n.EnumerateArray()
+                            .Where(e => e.ValueKind == JsonValueKind.String).Select(e => e.GetString()!).ToArray();
+                }
+                catch (ReaException) { /* unknown for this function; the others are still useful */ }
+                var count = Interlocked.Increment(ref done);
+                if (count % 250 == 0) progress?.Report(count);
+            }
+        }
+
+        await Task.WhenAll(Enumerable.Range(0, 16).Select(_ => WorkerAsync())).ConfigureAwait(false);
+        progress?.Report(addresses.Count);
+        // in the order of the addresses, so a saved graph does not depend on which request finished first
+        return new CallGraph
+        {
+            Callees = addresses.Where(callees.ContainsKey).ToDictionary(a => a, a => callees[a], StringComparer.Ordinal),
+        };
+    }
+
     // ---- JSON-RPC plumbing --------------------------------------------------------------------
 
     /// <summary>Calls one REA tool and returns its evidence JSON. Failures become <see cref="ReaException"/> with REA's own text.</summary>

@@ -383,6 +383,7 @@ public partial class MainWindow : Window
                               "Select a function to read its code.";
             _dirty = true;
             await StoreProjectAsync();   // the analysis is the expensive part; keep it before anything else can fail
+            await ComputeCallGraphAsync(session, cts.Token);   // seconds; lets the AI be told how each function fits in
             StartBulkDecompile(session);
         }
         catch (OperationCanceledException) { StatusText.Text = "Cancelled."; }
@@ -540,6 +541,7 @@ public partial class MainWindow : Window
             }
             _session = session;
             StatusText.Text = "Ghidra is ready; functions now decompile on demand.";
+            if (_callGraph is null) await ComputeCallGraphAsync(session, cts.Token);   // a project saved before call graphs existed
             StartBulkDecompile(session);   // fill in whatever the saved project did not contain
             return session;
         }
@@ -637,6 +639,10 @@ public partial class MainWindow : Window
         _aiCts?.Cancel();               // a description for the analysis being left must not land in the next one
         _analysisGeneration++;
         _descriptions.Clear();
+        _summaries.Clear();
+        _callGraph = null;
+        _graphIndex = null;
+        _programCard = null;
         SetAiPanelVisible(false);
         _selectionVersion++;
         FunctionsGrid.ItemsSource = null;
@@ -702,6 +708,8 @@ public partial class MainWindow : Window
         Decompiled = new Dictionary<string, string>(_decompiled),
         DecompileErrors = new Dictionary<string, string>(_decompileErrors),
         Descriptions = new Dictionary<string, FunctionDescription>(_descriptions),
+        CallGraph = _callGraph,
+        Summaries = new Dictionary<string, NeighbourSummary>(_summaries),
     };
 
     /// <summary>Stores the current analysis in the app's project folder and refreshes the Projects list.</summary>
@@ -823,6 +831,8 @@ public partial class MainWindow : Window
             foreach (var (address, code) in project.Decompiled) _decompiled[address] = code;
             foreach (var (address, error) in project.DecompileErrors) _decompileErrors[address] = error;
             foreach (var (address, description) in project.Descriptions) _descriptions[address] = description;
+            foreach (var (address, summary) in project.Summaries) _summaries[address] = summary;
+            if (project.CallGraph is { Callees.Count: > 0 } graph) SetCallGraph(graph);   // else recomputed when the AI needs it
 
             OverviewBox.Text = FormatOverview(Path.GetFileName(project.TargetPath), project.Overview, _procedures);
             ApplyFunctionFilter();
@@ -990,13 +1000,14 @@ public partial class MainWindow : Window
             {
                 var saved = JsonSerializer.Deserialize<ReaSettings>(File.ReadAllText(SettingsPath));
                 if (saved is not null)
-                    return new ReaSettings(
+                    return AiProfile.Migrate(new ReaSettings(
                         string.IsNullOrWhiteSpace(saved.GhidraInstallDir) ? defaults.GhidraInstallDir : saved.GhidraInstallDir,
                         string.IsNullOrWhiteSpace(saved.JavaHome) ? defaults.JavaHome : saved.JavaHome,
                         string.IsNullOrWhiteSpace(saved.ReaScript) ? defaults.ReaScript : saved.ReaScript,
                         "node",
                         string.IsNullOrWhiteSpace(saved.Theme) ? ThemeManager.FollowWindows : saved.Theme,
-                        saved.Ai);
+                        saved.Ai,
+                        saved.Revision));
             }
         }
         catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException) { }

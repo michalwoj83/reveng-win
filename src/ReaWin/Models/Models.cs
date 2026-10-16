@@ -100,7 +100,31 @@ public sealed record ProjectFile
     /// REA observed. Projects saved before this existed simply have none.
     /// </summary>
     public Dictionary<string, FunctionDescription> Descriptions { get; init; } = new();
+    /// <summary>
+    /// Which functions each function calls directly, as REA reported them. Kept so the AI can be told how a function fits
+    /// into the program; callers are derived from it. Null in projects saved before this existed: the app recomputes it
+    /// (a few seconds once Ghidra's session is up) and stores it.
+    /// </summary>
+    public CallGraph? CallGraph { get; init; }
+    /// <summary>
+    /// One-line AI summaries of functions that were shown to the model as context for another function, by address.
+    /// Inferences like <see cref="Descriptions"/>, written on demand and kept so they are not paid for twice.
+    /// </summary>
+    public Dictionary<string, NeighbourSummary> Summaries { get; init; } = new();
 }
+
+/// <summary>
+/// Direct calls between functions: the callee addresses of each function that was queried, exactly as REA's
+/// <c>procedure_callees</c> returned them (imports look like <c>EXTERNAL:0x5a</c>). Only this direction is stored;
+/// <c>procedure_callers</c> returns exactly its inverse, so <c>CallGraphIndex</c> derives it.
+/// </summary>
+public sealed record CallGraph
+{
+    public Dictionary<string, string[]> Callees { get; init; } = new();
+}
+
+/// <summary>A one-line summary of a function written by the local AI model as context for another function. An inference.</summary>
+public sealed record NeighbourSummary(string Text, string Model, DateTime GeneratedUtc);
 
 /// <summary>
 /// A description of one function written by the local AI model: an inference from the decompiled code, not an observation.
@@ -110,6 +134,16 @@ public sealed record FunctionDescription(string Text, int CodeCharsSent, int Cod
 {
     /// <summary>True when the function was longer than the model's context window and its tail was not shown to it.</summary>
     [JsonIgnore] public bool Truncated => CodeCharsSent < CodeCharsTotal;
+
+    /// <summary>
+    /// What the model was given besides the code, as text: the facts about callers and callees (observed) and the notes on
+    /// neighbouring functions (themselves AI-written). Kept so the description can be judged against its context.
+    /// Empty for descriptions written before context existed.
+    /// </summary>
+    public string Context { get; init; } = "";
+
+    /// <summary>Addresses of the neighbouring functions whose summaries were in <see cref="Context"/>.</summary>
+    public string[] NeighbourAddresses { get; init; } = [];
 }
 
 public sealed record StringInfo(string Address, string Value);
@@ -128,9 +162,11 @@ public sealed record OverviewResult(
 /// <summary>
 /// User settings. <paramref name="Theme"/> is "system" (follow Windows), "light" or "dark". <paramref name="Ai"/> is null
 /// until the user first opens the AI settings; the app then uses <c>AiProfile.DefaultSettings</c> (AI off).
+/// <paramref name="Revision"/> numbers the version of the app's defaults the file was written under, so a changed default
+/// (the AI context size) can be carried over once without overriding a choice made afterwards.
 /// </summary>
 public sealed record ReaSettings(string GhidraInstallDir, string JavaHome, string ReaScript, string NodeExe,
-    string Theme = "system", AiSettings? Ai = null);
+    string Theme = "system", AiSettings? Ai = null, int Revision = 0);
 
 /// <summary>A JDK found on disk. The version comes from its `release` file; java.exe is never run.</summary>
 public sealed record JavaInstall(string Home, int Major, string Version, string Vendor, bool Is64Bit)

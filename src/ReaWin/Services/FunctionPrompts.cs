@@ -16,37 +16,56 @@ public sealed record BuiltPrompt(LlmRequest Request, int CodeCharsSent, int Code
 
 /// <summary>
 /// The prompt for "describe this function", and the clean-up of the model's reply. All of it lives here, in one file,
-/// so it can be tuned and tested. Rules that matter for reverse engineering: the code is the only source of truth,
-/// placeholder names are not real names, what the code does is kept apart from what it is probably for, and what
-/// cannot be told from one function is said so instead of guessed.
+/// so it can be tuned and tested. Rules that matter for reverse engineering: the code is the only source of truth for what
+/// a function does, placeholder names are not real names, what the code does is kept apart from what it is probably for,
+/// the three kinds of context (observed facts, code as decompiled, AI-written notes) are labeled and trusted in that order,
+/// and what cannot be told is said so instead of guessed.
 /// </summary>
 public static class FunctionPrompts
 {
     internal const string SystemPrompt =
-        "You help a reverse engineer understand one function of a Windows program. The input is C-like pseudocode from " +
+        "You help a reverse engineer understand one function of a Windows program. The code is C-like pseudocode from " +
         "Ghidra's decompiler. Names such as FUN_140001000, DAT_1401ac170, param_1, local_28, iVar1 and uVar2 are " +
         "placeholders made by the tool, not the author's names; real names appear only for library and imported " +
         "functions (for example atexit or CreateFileW).\n\n" +
-        "Describe what this function does, using only what is visible in the code. Rules:\n" +
-        "- Say what the code does before saying what it is probably for. State what is visible plainly; use words such as " +
-        "\"probably\" or \"looks like\" for anything you infer.\n" +
-        "- Never invent anything: no purposes, structure or field names, constants or behavior that the code does not show. " +
-        "A callee with a placeholder name is described only by how it is used here.\n" +
-        "- If something cannot be told from this function alone, say so under Unclear instead of guessing.\n" +
-        "- Keep every name exactly as written in the code.\n" +
+        "You are also given context about the program and the function's neighbours. Trust it in this order: the code first; " +
+        "then the facts (observed by the tools, not by an AI); then code excerpts from callers; last the notes on neighbouring " +
+        "functions, which an AI wrote from their code and which may be wrong. The imports and strings of the program card are " +
+        "hints about the program, not proof that this function uses them.\n\n" +
+        "Explain what the function is for in this program, not only what its lines do. Rules:\n" +
+        "- State what is visible plainly; say \"probably\" or \"looks like\" for anything you infer.\n" +
+        "- Never invent purposes, structure, field names, constants or behavior that the code and the context do not show. " +
+        "A callee with a placeholder name is described only by how it is used here or by its note.\n" +
+        "- If the function is compiler-generated or standard-library code, say so first and keep the rest short.\n" +
+        "- If something cannot be told from the information given, say so under Unclear.\n" +
+        "- Keep every name exactly as written.\n" +
         "- Plain text only: no markdown, no # headings, no bold, no code blocks.\n\n" +
         "Reply in exactly this form:\n" +
-        "Summary: one or two sentences.\n" +
-        "Inputs: what the parameters seem to be used for, or none.\n" +
-        "Behavior:\n" +
-        "- one step per line, in order\n" +
-        "Calls: each called function and what it is used for here, or none.\n" +
-        "Unclear: what cannot be told from this function alone, or nothing.";
+        "Purpose: one or two sentences: what this function is for in the program.\n" +
+        "Role: where it fits: who calls it and what it relies on, in terms of what the program does.\n" +
+        "Details:\n" +
+        "- at most five short lines on the steps that matter\n" +
+        "Evidence: the strings, imports, constants, callers or notes that support the purpose.\n" +
+        "Suggested name: a descriptive snake_case name, or \"keep\" if the function already has a real name.\n" +
+        "Unclear: what cannot be told from the information given, or nothing.";
 
     internal const string Ask = "Describe this function.\n";
 
     // One worked example: small and large models alike follow a shown reply more faithfully than a list of rules.
     internal const string ExampleInput =
+        "Program:\nFile: example.exe (pe, x86_64, image base 0x140000000). 900 functions, 400 strings.\n" +
+        "Type: Windows GUI program, Amd64\nImports: 60 functions; most from KERNEL32.DLL (40), USER32.DLL (20)\n\n" +
+        "Facts from REA and Ghidra (observed, not AI):\n" +
+        "Function: FUN_1400027b0 (0x1400027b0)\n" +
+        "Kind: not matched to a known library by Ghidra (may still be compiler-generated)\n" +
+        "Called by 1: FUN_140001a00 (0x140001a00)\n" +
+        "Calls 2 program functions: FUN_1400e7870 (0x1400e7870), FUN_14011f590 (0x14011f590)\n" +
+        "Calls 1 imported functions: MSVCRT.DLL::atexit\n\n" +
+        "How callers use this function (code around the call sites, as decompiled):\n" +
+        "-- in FUN_140001a00 (0x140001a00):\n  FUN_140001900();\n  FUN_1400027b0();\n  FUN_140002900();\n\n" +
+        "Notes on neighbouring functions (written by an AI from their code; unverified and possibly wrong):\n" +
+        "FUN_1400e7870 (0x1400e7870): Takes a size and returns a new block; probably a memory allocator.\n" +
+        "FUN_14011f590 (0x14011f590): Walks the list headed by DAT_1401ac170 and frees every node; probably exit cleanup.\n\n" +
         "Name: FUN_1400027b0\nAddress: 0x1400027b0\n\nCode:\n" +
         "void FUN_1400027b0(void)\n\n{\n" +
         "  DAT_1401ac170 = FUN_1400e7870(0x18);\n" +
@@ -56,15 +75,15 @@ public static class FunctionPrompts
         "  return;\n}";
 
     internal const string ExampleReply =
-        "Summary: Allocates a 0x18-byte block, stores it in the global DAT_1401ac170, makes the block point to itself in its " +
-        "first two fields, and registers FUN_14011f590 to run at program exit.\n" +
-        "Inputs: none.\n" +
-        "Behavior:\n" +
-        "- Calls FUN_1400e7870 with 0x18 and saves the result in DAT_1401ac170; the callee is unnamed, but it takes a size, so it is probably an allocator.\n" +
-        "- Writes the block's own address at offset 0 and at offset 8, which looks like the head of an empty circular doubly linked list.\n" +
+        "Purpose: Sets up an empty circular list at startup and arranges for it to be freed when the program exits; probably part of program initialization.\n" +
+        "Role: Called from FUN_140001a00 in a row of setup calls. It relies on an allocator and registers FUN_14011f590, which the notes say frees the list.\n" +
+        "Details:\n" +
+        "- Allocates 0x18 bytes through FUN_1400e7870 and keeps the block in the global DAT_1401ac170.\n" +
+        "- Writes the block's own address at offsets 0 and 8, which looks like the head of an empty circular doubly linked list.\n" +
         "- Registers FUN_14011f590 with atexit.\n" +
-        "Calls: FUN_1400e7870 (probably allocates memory), atexit (C runtime, registers a function to run at exit), FUN_14011f590 (the exit handler; its purpose is not visible here).\n" +
-        "Unclear: What the list is used for; nothing in this function reads it.";
+        "Evidence: the self-referencing writes; the note on FUN_14011f590; the caller's sequence of setup calls.\n" +
+        "Suggested name: init_global_list\n" +
+        "Unclear: What the list will hold; nothing in this function adds to it.";
 
     /// <summary>Appended to code that did not fit, so the model knows the end is missing.</summary>
     internal const string TruncationMarker =
@@ -73,24 +92,62 @@ public static class FunctionPrompts
     /// <summary>Smallest amount of code worth sending; below this the context window is too small for the job.</summary>
     private const int MinCodeChars = 400;
 
-    public static BuiltPrompt Build(FunctionToDescribe function, int contextSize)
+    /// <summary>
+    /// The optional context (card, facts, excerpts, notes) may use at most this share of what is left after the instructions and
+    /// the reply, so the function's own code is never crowded out of a small window.
+    /// </summary>
+    internal const double OptionalShare = 0.45;
+
+    /// <summary>Share of the window held back as a margin because the estimates are not exact.</summary>
+    private const double SafetyShare = 0.05;
+
+    private const int PerMessageTokens = 4;
+    private const int PerRequestTokens = 8;
+
+    /// <summary>
+    /// The request for one function. With <paramref name="context"/> the prompt is, in this order (stable parts first so that
+    /// a server that reuses a common prefix can): instructions and example, the program card, the facts, call-site excerpts,
+    /// the notes on neighbours, then the function. Sections are added in the order of how much they help until their share of the
+    /// window is used; the code gets the rest and is cut at a line break only if it still does not fit.
+    /// </summary>
+    public static BuiltPrompt Build(FunctionToDescribe function, int contextSize, FunctionContext? context = null)
     {
         var code = Normalize(function.Code);
         var header = $"Name: {function.Name}\nAddress: {function.Address}\n\nCode:\n";
 
-        // What the window must also hold: instructions, the worked example, the framing of this request.
-        var overhead = SystemPrompt.Length + Ask.Length * 2 + ExampleInput.Length + ExampleReply.Length + header.Length + TruncationMarker.Length;
-        var budget = LlmContext.MaxInputChars(contextSize, overhead, AiProfile.ReplyTokens);
-        if (budget < MinCodeChars)
+        var fixedTokens = ContextBudget.TextTokens(SystemPrompt + Ask + Ask + ExampleInput + ExampleReply + header + TruncationMarker)
+                          + PerRequestTokens + PerMessageTokens * 4;
+        var available = contextSize - fixedTokens - AiProfile.ReplyTokens - (int)(contextSize * SafetyShare);
+        if (available < ContextBudget.CodeTokens(new string('x', MinCodeChars)))
             throw new LlmContextExceededException(
                 "The AI context window is too small to describe a function. Raise the context size in Settings.",
                 promptTokens: LlmContext.EstimateTokens(string.Concat(SystemPrompt, ExampleInput, ExampleReply)),
                 replyTokens: AiProfile.ReplyTokens, contextSize: contextSize);
 
+        // optional sections, most useful first, each added whole or trimmed to what is left of its share
+        var optional = new StringBuilder();
+        var left = (int)(available * OptionalShare);
+        string card = "", facts = "", sites = "", notes = "";
+        if (context is not null)
+        {
+            facts = Fit(context.Facts, ref left);
+            notes = FitLines(context.Notes, ref left);
+            sites = FitLines(context.CallSites, ref left);
+            card = Fit(context.ProgramCard, ref left);
+            if (card.Length == 0) card = Fit(context.ProgramCardCompact, ref left);
+        }
+        if (card.Length > 0) optional.Append("Program:\n").Append(card).Append("\n\n");
+        if (facts.Length > 0) optional.Append("Facts from REA and Ghidra (observed, not AI):\n").Append(facts).Append("\n\n");
+        if (sites.Length > 0) optional.Append("How callers use this function (code around the call sites, as decompiled):\n").Append(sites).Append("\n\n");
+        if (notes.Length > 0) optional.Append("Notes on neighbouring functions (written by an AI from their code; unverified and possibly wrong):\n").Append(notes).Append("\n\n");
+
+        var codeTokens = available - ContextBudget.TextTokens(optional.ToString());
+        var budget = (int)(codeTokens * ContextBudget.CodeCharsPerToken);
         var sent = code;
         if (code.Length > budget)
         {
             // cut at a line break so the model never sees half a statement
+            budget = Math.Max(MinCodeChars, budget);
             var cut = code.LastIndexOf('\n', budget - 1);
             sent = (cut > MinCodeChars / 2 ? code[..cut] : code[..budget]) + TruncationMarker;
         }
@@ -101,7 +158,7 @@ public static class FunctionPrompts
                 LlmMessage.System(SystemPrompt),
                 LlmMessage.User(Ask + ExampleInput),
                 LlmMessage.Assistant(ExampleReply),
-                LlmMessage.User(Ask + header + sent),
+                LlmMessage.User(Ask + optional + header + sent),
             },
             Temperature: AiProfile.Temperature,
             MaxTokens: AiProfile.ReplyTokens,
@@ -109,6 +166,32 @@ public static class FunctionPrompts
 
         var sentChars = sent.EndsWith(TruncationMarker, StringComparison.Ordinal) ? sent.Length - TruncationMarker.Length : sent.Length;
         return new BuiltPrompt(request, sentChars, code.Length);
+    }
+
+    /// <summary>The text if it fits in <paramref name="left"/> tokens (which it then reduces), otherwise nothing.</summary>
+    private static string Fit(string text, ref int left)
+    {
+        var cost = ContextBudget.TextTokens(text);
+        if (text.Length == 0 || cost > left) return "";
+        left -= cost;
+        return text;
+    }
+
+    /// <summary>As many whole lines as fit in <paramref name="left"/> tokens, which it then reduces.</summary>
+    private static string FitLines(string text, ref int left)
+    {
+        if (text.Length == 0) return "";
+        var kept = new StringBuilder();
+        var cost = 0;
+        foreach (var line in text.Split('\n'))
+        {
+            var lineCost = ContextBudget.TextTokens(line) + 1;
+            if (cost + lineCost > left) break;
+            kept.AppendLine(line);
+            cost += lineCost;
+        }
+        left -= cost;
+        return kept.ToString().TrimEnd();
     }
 
     /// <summary>Line breaks as <c>\n</c> and no blank lines at the start or end (REA's pseudocode begins with empty lines); indentation is kept.</summary>

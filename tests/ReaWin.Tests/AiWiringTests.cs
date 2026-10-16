@@ -46,9 +46,36 @@ public class AiWiringTests : IDisposable
         var args = LlamaServerArguments.Build(settings, "key");
 
         Assert.Equal(files.ModelPath, args[args.ToList().IndexOf("--model") + 1]);
-        Assert.Equal(new[] { "-fa", "on" }, args.Skip(args.Count - 2).ToArray());    // flash attention, last
-        Assert.Equal("8192", args[args.ToList().IndexOf("--ctx-size") + 1]);
+        // flash attention, then an 8-bit key/value cache because the window is large; both last
+        Assert.Equal(new[] { "-fa", "on", "--cache-type-k", "q8_0", "--cache-type-v", "q8_0" }, args.Skip(args.Count - 6).ToArray());
+        Assert.Equal("32768", args[args.ToList().IndexOf("--ctx-size") + 1]);
         Assert.Empty(settings.Validate());
+    }
+
+    [Fact]
+    public void A_small_window_keeps_the_default_cache_and_a_large_one_quantizes_it()
+    {
+        Assert.Equal(new[] { "-fa", "on" }, AiProfile.ServerArgumentsFor(8192));
+        Assert.Equal(new[] { "-fa", "on" }, AiProfile.ServerArgumentsFor(16384));          // the limit itself is still 16-bit
+        Assert.Contains("q8_0", AiProfile.ServerArgumentsFor(16385));
+        Assert.Equal(32768, AiProfile.DefaultContextSize);
+    }
+
+    [Fact]
+    public void The_old_default_window_moves_to_the_new_default_once_and_a_chosen_size_is_left_alone()
+    {
+        var old = new ReaSettings("g", "j", "r", "node", "dark", AiProfile.DefaultSettings with { Enabled = true, ContextSize = 8192 });
+        var migrated = AiProfile.Migrate(old);
+        Assert.Equal(32768, migrated.Ai!.ContextSize);
+        Assert.True(migrated.Ai.Enabled);                       // nothing else is touched
+        Assert.Equal(AiProfile.SettingsRevision, migrated.Revision);
+
+        // after the move, a user who picks 8192 again keeps it: the revision says the question is closed
+        Assert.Equal(8192, AiProfile.Migrate(migrated with { Ai = migrated.Ai with { ContextSize = 8192 } }).Ai!.ContextSize);
+        // a size the user chose before the move is theirs
+        Assert.Equal(16384, AiProfile.Migrate(old with { Ai = old.Ai! with { ContextSize = 16384 } }).Ai!.ContextSize);
+        // no AI settings yet: the default applies and nothing breaks
+        Assert.Null(AiProfile.Migrate(new ReaSettings("g", "j", "r", "node")).Ai);
     }
 
     [Fact]

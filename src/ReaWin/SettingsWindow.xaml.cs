@@ -230,7 +230,8 @@ public partial class SettingsWindow : Window
                 Processor = AiGpuRadio.IsChecked == true ? AiProcessor.Gpu : AiProcessor.Cpu,
                 Startup = AiWithAppBox.IsChecked == true ? AiStartup.WithApp : AiStartup.OnFirstUse,
                 ContextSize = contextSize,
-            });
+            },
+            _current.Revision);
         DialogResult = true;
     }
 }

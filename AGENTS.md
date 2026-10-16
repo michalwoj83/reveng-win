@@ -25,6 +25,12 @@ src/ReaWin/
   Services/AiFiles.cs       where the AI engine and model live (override, beside the app, or the user folder)
   Services/FunctionPrompts.cs  the "describe this function" prompt, truncation and reply clean-up (tested)
   Services/FunctionDescriber.cs asks the local model to describe one function
+  Services/ContextGatherer.cs   collects a function's context: callers, callees, call-site code, and lazy one-line summaries of callees
+  Services/FunctionContext.cs   the sections of that context (facts, call-site excerpts) and library detection
+  Services/NeighbourSummaries.cs batch prompt, reply parsing and one-line reuse for neighbour summaries
+  Services/ProgramCard.cs       whole-program card from REA's overview, imports, strings and the PE header (no AI)
+  Services/CallGraphIndex.cs    callers/callees lookups over the stored call graph (callers derived from callees)
+  Services/ContextBudget.cs     token estimates (decompiled C is about 2.4 chars/token with the model's vocabulary)
   MainWindow.Ai.cs          the Explain button, the AI panel, the provider lifecycle
   scripts/Install-Ai.ps1    installs the PrismML llama.cpp build and the Bonsai model (pins in scripts/ai-pins.json)
   tests/ReaWin.Tests        prompts, clean-up, settings and project compatibility, AI files; real-model test is env-gated
@@ -135,6 +141,14 @@ to check them. `dotnet test tests\ReaWin.Tests` runs the unit tests (the real-mo
   under `Descriptions` (never mixed into `Decompiled`), and never edits or replaces code. It is removed only by Discard.
 - **Prompts live in `FunctionPrompts.cs`** with tests: the code is the only source of truth, `FUN_`/`DAT_`/`param_` names are placeholders, "probably"
   marks inference, "Unclear" says what one function cannot show. Long functions are cut at a line break and the UI says how much the model saw.
+- **Context is always on, and layered by trust.** Prompt order is: instructions and example, program card, facts (observed), call-site code (as decompiled),
+  notes on neighbours (AI-written), then the function. The prompt labels each layer and tells the model to trust them in that order. Stable parts come first so
+  a server that reuses a common prefix can (not verified on this hybrid model). Optional layers get at most 45% of the window (`FunctionPrompts.OptionalShare`).
+- **Neighbour summaries are lazy and stored** (`ProjectFile.Summaries`): only callees without one are summarized, in batches, when Explain needs them. They are
+  inferences: never mix them into `Decompiled` or show them as observations, and keep "Forget" working so a wrong note can be removed.
+- **The call graph is stored in the project** (`ProjectFile.CallGraph`, callees only) and recomputed through a session when missing (`ComputeCallGraphAsync`).
+  Do not add a way to export or browse it separately. REA's `procedure_callers` is the exact inverse of `procedure_callees`, so only callees are saved.
+- **Defaults:** context 32,768 (`AiProfile.DefaultContextSize`, `ReaSettings.Revision` migrates a saved 8,192 once); above 16,384 the KV cache is `q8_0`.
 - **No new dependency beyond `AiSlop.LocalLlm`** (private feed, `nuget.config`; see the `aislop-nuget-packages` skill).
 
 Good next features:

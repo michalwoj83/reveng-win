@@ -106,8 +106,8 @@ list). If the analyzed file has changed since the project was stored, the Log ta
 
 ## Local AI: describe a function
 
-Select a function and press **Explain**: the local model reads the decompiled code and writes a short description (summary, inputs, behavior, calls,
-what is unclear). It runs on this PC through `AiSlop.LocalLlm`; nothing is sent anywhere. The description appears in its own panel tagged
+Select a function and press **Explain**: the local model reads the decompiled code **and its context in the program** and writes a short description
+(purpose, role, the steps that matter, the evidence, a suggested name, what is unclear). It runs on this PC through `AiSlop.LocalLlm`; nothing is sent anywhere. The description appears in its own panel tagged
 **Inference · AI**, with the model's name and a reminder to check it against the code. It is saved in the project, so reopening a project shows it
 again. *Copy* puts it on the clipboard, *Discard* removes it from the project, *Stop* cancels a running request.
 
@@ -124,8 +124,19 @@ then turn on *Local AI* in Settings. Notes:
   a 27B model, `-Engine vulkan` has caveats on the model's known-issues page.
 - The model file is 5.9 GB, so GPU use is meant for cards with roughly 8 GB or more (not tested on every card). Settings offer GPU only if the engine itself reports a usable one; the CPU is the default.
 - The model thinks by default; the app turns that off for descriptions, so there is no long reasoning wait. Loading the model still takes a while the first time (see *Load the model when the app starts*).
-- Functions longer than the context window are cut at a line break; the panel says how much of the function the model saw. Raise *Context size* in Settings
-  for more (memory grows).
+- **Context is always on.** Besides the code the model is given a program card (file type, version resource, imports grouped by what they suggest, a few strings),
+  facts from REA (who calls the function, what it calls, whether Ghidra matched it to a library), the code around the places where callers call it, and one-line
+  notes on the functions it calls. Those notes are written by the model, **on demand**: the first Explain on a function summarizes its not-yet-summarized
+  callees in one batch (up to 8 at a time, 1,600 characters of each) and keeps them in the project, so each neighbour is paid for once. The panel's
+  *Show context* lists exactly what the model was given; *Forget the neighbour summaries used here* removes the AI notes so they are written again.
+  Notes are labeled unverified in the prompt and the model is told to trust the code, then the facts, then the call-site code, and the notes last.
+- The call graph (direct calls, from REA's `procedure_callees`) is read once after an analysis (seconds) and stored in the project. A project saved without it
+  recomputes it the first time it is needed, which starts Ghidra. The app does not export or show the graph itself.
+- The context size defaults to **32,768 tokens** (a settings file that still held the old 8,192 is moved to it once). Most requests use a few thousand: the card,
+  facts and notes get at most 45% of the window, so the function's code is never crowded out, and even the largest function of a real program (about 9,000 tokens)
+  fits whole. On an 8 GB card the prompt is read at roughly 180 tokens a second, so a request with context takes seconds to a minute, not the whole window's
+  worth. Above 16,384 tokens the server stores its key/value cache in 8 bits (`--cache-type-k/v q8_0`) so the window fits next to the 6 GB model; that
+  choice is not yet measured for speed or quality on every card. Functions that still do not fit are cut at a line break and the panel says how much the model saw.
 - The installer script needs the shared installer kit (`ai-tooling/windows/llm-installer`) next to this repository, or `-Kit` / `AISLOP_KIT`.
 
 ## Known limitations

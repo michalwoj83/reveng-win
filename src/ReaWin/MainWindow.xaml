@@ -209,6 +209,9 @@
                                                 <!-- tag on the left, actions on the right: one row, so the text below gets the room -->
                                                 <DockPanel DockPanel.Dock="Top">
                                                     <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                                                        <Button x:Name="AiContextButton" Content="Show context" Style="{StaticResource TextButton}" MinHeight="26"
+                                                                Padding="10,0" Click="AiContext_Click" Visibility="Collapsed"
+                                                                ToolTip="What the model was told about the function's callers and callees besides the code." />
                                                         <Button x:Name="AiCopyButton" Content="Copy" Style="{StaticResource TextButton}" MinHeight="26"
                                                                 Padding="10,0" Click="AiCopy_Click" />
                                                         <Button x:Name="AiDiscardButton" Content="Discard" Style="{StaticResource TextButton}" MinHeight="26"
@@ -225,6 +228,14 @@
                                                     </StackPanel>
                                                 </DockPanel>
                                                 <TextBlock x:Name="AiNote" DockPanel.Dock="Top" Margin="0,4,0,6" Style="{StaticResource CaptionText}" />
+                                                <!-- the context the description was written from: observed facts and the AI's own notes on neighbours -->
+                                                <DockPanel x:Name="AiContextPanel" DockPanel.Dock="Top" Margin="0,0,0,6" Visibility="Collapsed">
+                                                    <Button x:Name="AiForgetButton" DockPanel.Dock="Bottom" HorizontalAlignment="Left" Style="{StaticResource TextButton}"
+                                                            MinHeight="26" Padding="0,0,10,0" Content="Forget the neighbour summaries used here" Click="AiForget_Click"
+                                                            ToolTip="Removes the AI's one-line notes on the neighbouring functions, so the next Explain writes them again." />
+                                                    <TextBox x:Name="AiContextText" Style="{StaticResource ReadingBox}" TextWrapping="Wrap" MaxHeight="150"
+                                                             AutomationProperties.Name="Context given to the AI" />
+                                                </DockPanel>
                                                 <TextBox x:Name="AiText" Style="{StaticResource ReadingBox}" TextWrapping="Wrap"
                                                          AutomationProperties.Name="AI description of the function" />
                                             </DockPanel>
