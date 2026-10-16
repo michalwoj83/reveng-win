@@ -39,6 +39,9 @@
 
         <!-- 1. Choose an application directory -->
         <DockPanel Grid.Row="1" Margin="12,12,12,0" LastChildFill="True">
+            <Button x:Name="PanelToggleButton" DockPanel.Dock="Left" Content="◀ Hide list" Style="{StaticResource TextButton}" Margin="0,0,8,0" Click="PanelToggle_Click"
+                    ToolTip="Hide or show the list of binaries and projects (Ctrl+B). While it is hidden the workspace uses the whole width."
+                    AutomationProperties.Name="Hide or show the binaries and projects list" />
             <Button x:Name="BrowseButton" DockPanel.Dock="Left" Content="Select app folder…" Click="Browse_Click" />
             <Button x:Name="RescanButton" DockPanel.Dock="Right" Content="Rescan" Margin="8,0,0,0" Click="Rescan_Click" IsEnabled="False" />
             <TextBox x:Name="FolderBox" Margin="8,0,0,0" IsReadOnly="True" AutomationProperties.Name="Selected folder" />
@@ -46,13 +49,13 @@
 
         <Grid Grid.Row="2" Margin="12">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="4*" MinWidth="330" />
-                <ColumnDefinition Width="12" />
-                <ColumnDefinition Width="6*" MinWidth="420" />
+                <ColumnDefinition x:Name="LeftPaneColumn" Width="4*" MinWidth="330" />
+                <ColumnDefinition x:Name="PanelSplitterColumn" Width="12" />
+                <ColumnDefinition x:Name="WorkspaceColumn" Width="6*" MinWidth="420" />
             </Grid.ColumnDefinitions>
 
-            <!-- 2. What to analyze: detected binaries and stored projects -->
-            <Border Grid.Column="0" Style="{StaticResource Pane}">
+            <!-- 2. What to analyze: detected binaries and stored projects. Can be hidden (the button in the folder row, Ctrl+B). -->
+            <Border x:Name="LeftPane" Grid.Column="0" Style="{StaticResource Pane}">
                 <TabControl x:Name="LeftTabs">
                     <TabItem Header="Binaries">
                         <DockPanel>
@@ -141,6 +144,9 @@
                     </TabItem>
                 </TabControl>
             </Border>
+
+            <GridSplitter x:Name="PanelSplitter" Grid.Column="1" HorizontalAlignment="Stretch" ResizeBehavior="PreviousAndNext"
+                          ToolTip="Drag to make the list wider or narrower" />
 
             <!-- 3. What was found -->
             <Border Grid.Column="2" Style="{StaticResource Pane}">

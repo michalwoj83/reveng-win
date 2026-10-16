@@ -53,6 +53,20 @@ public class AiWiringTests : IDisposable
     }
 
     [Fact]
+    public void The_hidden_list_is_a_setting_that_survives_a_round_trip_and_an_old_file_shows_the_list()
+    {
+        var hidden = new ReaSettings("g", "j", "r", "node") { ListHidden = true };
+
+        var back = System.Text.Json.JsonSerializer.Deserialize<ReaSettings>(System.Text.Json.JsonSerializer.Serialize(hidden))!;
+        var old = System.Text.Json.JsonSerializer.Deserialize<ReaSettings>(
+            "{\"GhidraInstallDir\":\"g\",\"JavaHome\":\"j\",\"ReaScript\":\"r\",\"NodeExe\":\"node\",\"Theme\":\"dark\"}")!;
+
+        Assert.True(back.ListHidden);
+        Assert.False(old.ListHidden);      // a settings file from before this existed shows the list, as it always did
+        Assert.False(new ReaSettings("g", "j", "r", "node").ListHidden);
+    }
+
+    [Fact]
     public void A_small_window_keeps_the_default_cache_and_a_large_one_quantizes_it()
     {
         Assert.Equal(new[] { "-fa", "on" }, AiProfile.ServerArgumentsFor(8192));

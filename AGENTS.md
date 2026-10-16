@@ -134,6 +134,12 @@ to check them. `dotnet test tests\ReaWin.Tests` runs the unit tests (the real-mo
 4. Handle `ReaException` and `OperationCanceledException`.
 5. Update `README.md` (tabs table and limitations) when behavior changes.
 
+## Layout
+
+- The list of binaries and projects (`LeftPane`) is hideable (`PanelToggleButton`, Ctrl+B, `ReaSettings.ListHidden`, saved with the settings). Hiding collapses its column and the
+  splitter column so the workspace column, the only star column left, takes all the width; showing restores the widths the user had. Anything that points the user at the list
+  (empty-state text) must say what to do when it is hidden.
+
 ## Local AI (describing functions)
 
 - **What it does:** the Explain button describes the selected function with Ternary Bonsai 2 27B (PTQ1_0) through `AiSlop.LocalLlm`. Nothing leaves the

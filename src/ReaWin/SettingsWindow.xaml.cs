@@ -231,7 +231,8 @@ public partial class SettingsWindow : Window
                 Startup = AiWithAppBox.IsChecked == true ? AiStartup.WithApp : AiStartup.OnFirstUse,
                 ContextSize = contextSize,
             },
-            _current.Revision);
+            _current.Revision,
+            _current.ListHidden);
         DialogResult = true;
     }
 }

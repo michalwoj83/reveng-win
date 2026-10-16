@@ -99,6 +99,12 @@ connected knot of thousands of functions, so the view stays readable by rules th
 - The graph holds **direct calls only**. Calls through pointers, vtables and callbacks are not in it: about a third of a typical program's functions have no direct
   caller, and only a fraction is reachable from the entry point, so the graph is not a map of the whole program. A function with no direct callers says so.
 
+## The list of binaries and projects
+
+The list on the left (binaries found in the folder, and stored projects) can be hidden with the **Hide list** button next to *Select app folder…* or with Ctrl+B. The workspace
+(Functions, Graph, code and the AI panel) then takes the whole width; **Show list** or Ctrl+B brings the list back where it was. While it is shown, the divider between the list and
+the workspace can be dragged. The choice is remembered between runs.
+
 ## Appearance
 
 The app uses the Ai.Slop.AI visual system: neutral surfaces, one violet accent, cyan for work in progress, and a

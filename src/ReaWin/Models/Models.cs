@@ -194,9 +194,10 @@ public sealed record OverviewResult(
 /// until the user first opens the AI settings; the app then uses <c>AiProfile.DefaultSettings</c> (AI off).
 /// <paramref name="Revision"/> numbers the version of the app's defaults the file was written under, so a changed default
 /// (the AI context size) can be carried over once without overriding a choice made afterwards.
+/// <paramref name="ListHidden"/> is true while the list of binaries and projects is hidden (the workspace then uses the whole width).
 /// </summary>
 public sealed record ReaSettings(string GhidraInstallDir, string JavaHome, string ReaScript, string NodeExe,
-    string Theme = "system", AiSettings? Ai = null, int Revision = 0);
+    string Theme = "system", AiSettings? Ai = null, int Revision = 0, bool ListHidden = false);
 
 /// <summary>A JDK found on disk. The version comes from its `release` file; java.exe is never run.</summary>
 public sealed record JavaInstall(string Home, int Major, string Version, string Vendor, bool Is64Bit)

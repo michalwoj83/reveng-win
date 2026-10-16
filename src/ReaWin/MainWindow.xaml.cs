@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using AiSlop.LocalLlm;
 using Microsoft.Win32;
 using ReaWin.Models;
@@ -54,6 +55,8 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         _settings = LoadSettings();
+        ApplyListPanel(_settings.ListHidden);
+        PreviewKeyDown += OnWindowPreviewKeyDown;
         ThemeManager.Attach(this);
         ThemeManager.Apply(_settings.Theme);
         UpdateSetupState();
@@ -167,7 +170,8 @@ public partial class MainWindow : Window
         {
             EmptyTitle.Text = "Nothing analyzed yet";
             EmptyBody.Text = "Select an application folder, pick a binary and choose Analyze selected. " +
-                             "Or open a stored project from the Projects tab.";
+                             "Or open a stored project from the Projects tab" +
+                             (LeftPane.Visibility == Visibility.Visible ? "." : " (the list is hidden: press Show list or Ctrl+B).");
             SetEmptyAction(EmptyPrimary, "Select app folder…", "browse");
         }
     }
@@ -1002,6 +1006,66 @@ public partial class MainWindow : Window
 
     private ReaSettings CurrentSettings() => _settings;
 
+    // ---- the list of binaries and projects can be hidden ------------------------------------------------------
+
+    private GridLength _listWidth = new(4, GridUnitType.Star);          // what the list and the workspace had before the list was hidden,
+    private GridLength _workspaceWidth = new(6, GridUnitType.Star);     // so showing it again restores the user's splitter position
+
+    private void PanelToggle_Click(object sender, RoutedEventArgs e) => SetListHidden(LeftPane.Visibility == Visibility.Visible);
+
+    private void OnWindowPreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.B && Keyboard.Modifiers == ModifierKeys.Control)
+        {
+            e.Handled = true;
+            SetListHidden(LeftPane.Visibility == Visibility.Visible);
+        }
+    }
+
+    private void SetListHidden(bool hidden)
+    {
+        ApplyListPanel(hidden);
+        _settings = _settings with { ListHidden = hidden };
+        SaveSettings();
+        UpdateEmptyState();   // its hint mentions the list
+    }
+
+    /// <summary>
+    /// Hides the list (its column, the splitter and the pane) so that the workspace is the only column and takes all the width, or shows it
+    /// again where it was. The workspace's own layout needs nothing else: it already fills the column it is in.
+    /// </summary>
+    private void ApplyListPanel(bool hidden)
+    {
+        if (hidden == (LeftPane.Visibility != Visibility.Visible)) { UpdateListToggle(hidden); return; }
+        if (hidden)
+        {
+            _listWidth = LeftPaneColumn.Width;
+            _workspaceWidth = WorkspaceColumn.Width;
+            LeftPane.Visibility = PanelSplitter.Visibility = Visibility.Collapsed;
+            LeftPaneColumn.MinWidth = 0;
+            LeftPaneColumn.Width = new GridLength(0);
+            PanelSplitterColumn.Width = new GridLength(0);
+            WorkspaceColumn.Width = new GridLength(1, GridUnitType.Star);
+        }
+        else
+        {
+            LeftPane.Visibility = PanelSplitter.Visibility = Visibility.Visible;
+            LeftPaneColumn.MinWidth = 330;
+            LeftPaneColumn.Width = _listWidth;
+            PanelSplitterColumn.Width = new GridLength(12);
+            WorkspaceColumn.Width = _workspaceWidth;
+        }
+        UpdateListToggle(hidden);
+    }
+
+    private void UpdateListToggle(bool hidden)
+    {
+        PanelToggleButton.Content = hidden ? "▶ Show list" : "◀ Hide list";
+        PanelToggleButton.ToolTip = hidden
+            ? "Show the list of binaries and projects again (Ctrl+B)."
+            : "Hide the list of binaries and projects (Ctrl+B). While it is hidden the workspace uses the whole width.";
+    }
+
     private static ReaSettings LoadSettings()
     {
         var defaults = ReaClient.DefaultSettings();
@@ -1018,7 +1082,8 @@ public partial class MainWindow : Window
                         "node",
                         string.IsNullOrWhiteSpace(saved.Theme) ? ThemeManager.FollowWindows : saved.Theme,
                         saved.Ai,
-                        saved.Revision));
+                        saved.Revision,
+                        saved.ListHidden));
             }
         }
         catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException) { }
