@@ -36,7 +36,9 @@ Open **REA / Ghidra settings**, check the paths, and use **Run rea doctor** once
 ```
 
 A per-user Inno Setup installer (no admin prompt). It bundles the self-contained app and the pinned PrismML llama.cpp build (`ai\`), and
-downloads the 5.9 GB model during Setup, verified by SHA-256 (offline: `Setup.exe /MODEL=<file>`). It does not install Node, REA, Ghidra or a
+downloads the 5.9 GB model during Setup, verified by SHA-256 (offline: `Setup.exe /MODEL=<file>`). The model is kept in the standard
+Hugging Face cache (`%USERPROFILE%\.cache\huggingface\hub`, or `HF_HUB_CACHE` / `HF_HOME`) and reused when it is already there, whether
+an earlier Setup or another Hugging Face tool put it there; the install folder holds a hard link, so it takes the disk space once. It does not install Node, REA, Ghidra or a
 JDK; the first page of Setup says so. Settings and projects in `%LocalAppData%\ReaWin` survive update and uninstall. Needs Inno Setup 6 and
 the shared installer kit (`-Kit`, `AISLOP_KIT`, or `ai-tooling` next to this repository). The version is `<Version>` in `ReaWin.csproj`.
 Setup is not code-signed, so SmartScreen may warn.
