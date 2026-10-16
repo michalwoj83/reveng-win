@@ -1,4 +1,4 @@
-<Window x:Class="ReaWin.MainWindow"
+<Window xmlns:local="clr-namespace:ReaWin" x:Class="ReaWin.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Reverse.Engineer.AI" Height="800" Width="1320" MinHeight="560" MinWidth="980"
@@ -246,10 +246,100 @@
                                                     Margin="0,0,8,0" Click="Explain_Click" />
                                             <Button DockPanel.Dock="Left" x:Name="AiStopButton" Content="Stop" Style="{StaticResource TextButton}" MinHeight="28"
                                                     Visibility="Collapsed" Margin="0,0,8,0" Click="AiStop_Click" />
+                                            <Button DockPanel.Dock="Left" x:Name="ShowInGraphButton" Content="Show in graph" Style="{StaticResource TextButton}" MinHeight="28"
+                                                    IsEnabled="False" Margin="0,0,8,0" Click="ShowInGraph_Click"
+                                                    ToolTip="Open this function in the Graph tab: who calls it and what it calls." />
                                             <TextBlock x:Name="AiHint" Style="{StaticResource CaptionText}" VerticalAlignment="Center"
                                                        TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" />
                                         </DockPanel>
                                     </Grid>
+                                </Grid>
+                            </DockPanel>
+                        </TabItem>
+                        <TabItem x:Name="GraphTab" Header="Graph">
+                            <DockPanel>
+                                <!-- Focus, history, search and what to show. Wraps on a narrow window. -->
+                                <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                                    <Button x:Name="GraphBackButton" Content="◀" Style="{StaticResource TextButton}" MinHeight="28" Padding="10,0" Margin="0,0,2,0"
+                                            IsEnabled="False" Click="GraphBack_Click" ToolTip="Back to the previous focus" AutomationProperties.Name="Back" />
+                                    <Button x:Name="GraphForwardButton" Content="▶" Style="{StaticResource TextButton}" MinHeight="28" Padding="10,0" Margin="0,0,10,0"
+                                            IsEnabled="False" Click="GraphForward_Click" ToolTip="Forward" AutomationProperties.Name="Forward" />
+                                    <TextBlock x:Name="GraphFocusText" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,14,0" MaxWidth="320"
+                                               TextTrimming="CharacterEllipsis" Text="No function" />
+                                    <TextBox x:Name="GraphFindBox" Width="190" Margin="0,0,14,0" KeyDown="GraphFind_KeyDown"
+                                             ToolTip="Type part of a name or an address and press Enter" AutomationProperties.Name="Find a function to focus" />
+                                    <TextBlock Text="Depth" Style="{StaticResource MutedText}" VerticalAlignment="Center" Margin="0,0,6,0" />
+                                    <RadioButton x:Name="GraphDepth1" Content="1" GroupName="GraphDepth" IsChecked="True" Margin="0,0,8,0" VerticalAlignment="Center" Click="GraphOptions_Changed" />
+                                    <RadioButton x:Name="GraphDepth2" Content="2" GroupName="GraphDepth" Margin="0,0,8,0" VerticalAlignment="Center" Click="GraphOptions_Changed" />
+                                    <RadioButton x:Name="GraphDepth3" Content="3" GroupName="GraphDepth" Margin="0,0,14,0" VerticalAlignment="Center" Click="GraphOptions_Changed" />
+                                    <TextBlock Text="Show" Style="{StaticResource MutedText}" VerticalAlignment="Center" Margin="0,0,6,0" />
+                                    <RadioButton x:Name="GraphBoth" Content="Both" GroupName="GraphDirection" IsChecked="True" Margin="0,0,8,0" VerticalAlignment="Center" Click="GraphOptions_Changed" />
+                                    <RadioButton x:Name="GraphCallersOnly" Content="Callers" GroupName="GraphDirection" Margin="0,0,8,0" VerticalAlignment="Center" Click="GraphOptions_Changed" />
+                                    <RadioButton x:Name="GraphCalleesOnly" Content="Callees" GroupName="GraphDirection" Margin="0,0,14,0" VerticalAlignment="Center" Click="GraphOptions_Changed" />
+                                    <CheckBox x:Name="GraphLibraryBox" Content="Library &amp; runtime" Margin="0,0,12,0" VerticalAlignment="Center" Click="GraphOptions_Changed"
+                                              ToolTip="Functions Ghidra matched to a library (C runtime and the like). Hidden by default." />
+                                    <CheckBox x:Name="GraphImportsBox" Content="Imports" IsChecked="True" Margin="0,0,12,0" VerticalAlignment="Center" Click="GraphOptions_Changed" />
+                                    <CheckBox x:Name="GraphHubsBox" Content="Hubs" Margin="0,0,12,0" VerticalAlignment="Center" Click="GraphOptions_Changed"
+                                              ToolTip="Follow calls through functions that have very many callers or callees. Off keeps the picture readable." />
+                                    <Button x:Name="GraphFitButton" Content="Fit" Style="{StaticResource TextButton}" MinHeight="28" Padding="10,0" Click="GraphFit_Click"
+                                            ToolTip="Fit the whole picture in the window (Home)" />
+                                </WrapPanel>
+
+                                <TextBlock DockPanel.Dock="Bottom" x:Name="GraphStatus" Margin="2,8,0,0" Style="{StaticResource CaptionText}" TextWrapping="Wrap" />
+
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" MinWidth="260" />
+                                        <ColumnDefinition Width="12" />
+                                        <ColumnDefinition Width="300" MinWidth="220" MaxWidth="480" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <Border Grid.Column="0" Style="{StaticResource Pane}" Background="{DynamicResource CanvasBrush}" CornerRadius="10">
+                                        <Grid>
+                                            <local:GraphCanvas x:Name="GraphView" AutomationProperties.Name="Call graph"
+                                                               AutomationProperties.HelpText="Callers on the left, the focused function in the middle, callees on the right. Arrow keys move between nodes, Enter makes a node the focus. The list on the right holds the same neighbours." />
+                                            <!-- shown instead of the picture when there is nothing to draw -->
+                                            <StackPanel x:Name="GraphEmpty" HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="420" Margin="24">
+                                                <TextBlock x:Name="GraphEmptyTitle" FontWeight="SemiBold" FontSize="15" TextWrapping="Wrap" />
+                                                <TextBlock x:Name="GraphEmptyText" Style="{StaticResource CaptionText}" Margin="0,6,0,0" />
+                                                <Button x:Name="GraphEmptyAction" Style="{StaticResource PrimaryButton}" HorizontalAlignment="Left" Margin="0,12,0,0"
+                                                        Visibility="Collapsed" Click="GraphEmptyAction_Click" />
+                                                <TextBlock x:Name="GraphStartLabel" Text="Start from" Style="{StaticResource MutedText}" FontWeight="Medium" Margin="0,14,0,4" Visibility="Collapsed" />
+                                                <ListBox x:Name="GraphStartList" MaxHeight="190" Visibility="Collapsed" MouseDoubleClick="GraphStartList_DoubleClick"
+                                                         KeyDown="GraphStartList_KeyDown" AutomationProperties.Name="Functions to start the graph from" />
+                                            </StackPanel>
+                                        </Grid>
+                                    </Border>
+
+                                    <GridSplitter Grid.Column="1" HorizontalAlignment="Stretch" ResizeBehavior="PreviousAndNext" />
+
+                                    <!-- the selected node: observed facts, the AI note if there is one, what can be done with it, its neighbours -->
+                                    <Border Grid.Column="2" Style="{StaticResource Pane}" Padding="12">
+                                        <DockPanel>
+                                            <TextBlock DockPanel.Dock="Top" x:Name="GraphNodeName" FontWeight="SemiBold" FontSize="14" TextWrapping="Wrap" Text="Nothing selected" />
+                                            <TextBlock DockPanel.Dock="Top" x:Name="GraphNodeAddress" Style="{StaticResource CaptionText}" FontFamily="{StaticResource MonoFont}" Margin="0,2,0,6" />
+                                            <StackPanel DockPanel.Dock="Top" x:Name="GraphNodeDetails" Visibility="Collapsed">
+                                                <Border Style="{StaticResource Pill}" Background="Transparent" BorderThickness="1" BorderBrush="{DynamicResource LineBrush}"
+                                                        ToolTip="Facts from REA and Ghidra; nothing here is inferred by this app or the AI.">
+                                                    <TextBlock Text="Observed · REA" FontSize="11" FontWeight="SemiBold" Style="{StaticResource MutedText}" />
+                                                </Border>
+                                                <TextBlock x:Name="GraphNodeFacts" Style="{StaticResource CaptionText}" Margin="0,6,0,0" />
+                                                <StackPanel x:Name="GraphNodeAi" Margin="0,10,0,0" Visibility="Collapsed">
+                                                    <Border Style="{StaticResource Pill}" Background="Transparent" BorderThickness="1" BorderBrush="{DynamicResource WarnBrush}"
+                                                            ToolTip="The model note about this function, not something REA observed.">
+                                                        <TextBlock Text="Inference · AI" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource WarnBrush}" />
+                                                    </Border>
+                                                    <TextBlock x:Name="GraphNodeAiText" TextWrapping="Wrap" Margin="0,6,0,0" />
+                                                </StackPanel>
+                                                <!-- What can be done with the node. Filled from the list of graph actions in MainWindow.Graph.cs. -->
+                                                <WrapPanel x:Name="GraphActionsPanel" Margin="0,12,0,0" />
+                                            </StackPanel>
+                                            <TextBlock DockPanel.Dock="Top" x:Name="GraphNeighboursLabel" Text="Neighbours" Style="{StaticResource MutedText}" FontWeight="Medium"
+                                                       Margin="0,12,0,4" Visibility="Collapsed" />
+                                            <ListBox x:Name="GraphNeighbours" Visibility="Collapsed" MouseDoubleClick="GraphNeighbours_DoubleClick" KeyDown="GraphNeighbours_KeyDown"
+                                                     AutomationProperties.Name="Neighbours of the selected function" />
+                                        </DockPanel>
+                                    </Border>
                                 </Grid>
                             </DockPanel>
                         </TabItem>

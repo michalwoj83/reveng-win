@@ -58,6 +58,7 @@ public partial class MainWindow : Window
         ThemeManager.Apply(_settings.Theme);
         UpdateSetupState();
         InitializeAi();
+        InitializeGraph();
         RefreshProjectList(null);
         if (ProjectsList.Items.Count > 0) LeftTabs.SelectedItem = ProjectsTab;
         Closing += (_, _) =>
@@ -200,7 +201,9 @@ public partial class MainWindow : Window
     private void Tabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         // Selection events from the grids inside the tabs bubble up to here; only the tab strip matters.
-        if (ReferenceEquals(e.OriginalSource, Tabs)) UpdateEmptyState();
+        if (!ReferenceEquals(e.OriginalSource, Tabs)) return;
+        UpdateEmptyState();
+        if (Tabs.SelectedItem == GraphTab) OnGraphTabShown();
     }
 
     /// <summary>REA reports failures as JSON; the readable part is its "message".</summary>
@@ -643,6 +646,7 @@ public partial class MainWindow : Window
         _callGraph = null;
         _graphIndex = null;
         _programCard = null;
+        ResetGraph();
         SetAiPanelVisible(false);
         _selectionVersion++;
         FunctionsGrid.ItemsSource = null;

@@ -72,7 +72,26 @@ Special cases:
 |---|---|---|
 | Overview | `binary_overview` | format, architecture, image base, SHA-256, sections, counts, imported libraries, limitations |
 | Functions | `list_procedures`, `procedure_pseudo_code`, `batch_decompile` | program functions and imports, Ghidra's `entry` marked; the decompiled code of the selected function appears beside the list |
+| Graph | `procedure_callees` | who calls a function and what it calls, one neighbourhood at a time (see below) |
 | Strings | `list_strings` | every Ghidra-defined string with address |
+
+### The Graph tab
+
+The graph follows one **focus** function (press *Show in graph* on the Functions tab, search for a name or address, or start from a suggestion):
+callers on the left, the focus in the middle, callees on the right, in columns by distance. It is never the whole program: a typical program is one
+connected knot of thousands of functions, so the view stays readable by rules the status line spells out.
+
+- **Depth** 1 to 3, and *Both*, *Callers* or *Callees*. A column shows up to 12 functions; the rest are one **+N more** node (click to show 25 more).
+- **Library & runtime** functions (those Ghidra matched to its library signatures, known from their decompiled code) are hidden by default; the box shows them.
+  A hidden function is not followed through, and the status line counts what is hidden.
+- **Hubs** (more than 30 neighbours, mostly C runtime helpers) are shown when they are next to the focus but not followed through; the box follows them.
+- **Imports** appear as small chips next to the focus' callees. Calls that skip a column (a caller that also calls one of the focus' callees) are drawn only
+  for the node under the pointer or selected, so they do not cross the picture.
+- Click a node to select it: the panel shows REA's facts about it, the AI's one-line note if there is one (marked *Inference · AI*), what can be done with it
+  (*Make focus*, *Open code*) and its neighbours as a list. Double-click, or Enter, makes it the focus; right-click opens the same actions. Back and forward
+  go through the focus history. Drag to pan, scroll to zoom, arrow keys move between nodes, Home fits the picture.
+- The graph holds **direct calls only**. Calls through pointers, vtables and callbacks are not in it: about a third of a typical program's functions have no direct
+  caller, and only a fraction is reachable from the entry point, so the graph is not a map of the whole program. A function with no direct callers says so.
 
 ## Appearance
 

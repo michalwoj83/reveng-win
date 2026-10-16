@@ -30,6 +30,10 @@ src/ReaWin/
   Services/NeighbourSummaries.cs batch prompt, reply parsing and one-line reuse for neighbour summaries
   Services/ProgramCard.cs       whole-program card from REA's overview, imports, strings and the PE header (no AI)
   Services/CallGraphIndex.cs    callers/callees lookups over the stored call graph (callers derived from callees)
+  Services/GraphModel.cs        the neighbourhood drawn in the Graph tab: caps, hubs, library hiding, minor edges (pure, tested)
+  Services/GraphLayout.cs       layered left-to-right layout of that neighbourhood (pure, deterministic, tested)
+  GraphCanvas.cs                one self-drawing element: pan, zoom, hover, select, keyboard; reports events, knows no actions
+  MainWindow.Graph.cs           the Graph tab: focus and history, filters, side panel, node actions (see below)
   Services/ContextBudget.cs     token estimates (decompiled C is about 2.4 chars/token with the model's vocabulary)
   MainWindow.Ai.cs          the Explain button, the AI panel, the provider lifecycle
   scripts/Install-Ai.ps1    installs the PrismML llama.cpp build and the Bonsai model (pins in scripts/ai-pins.json)
@@ -150,6 +154,20 @@ to check them. `dotnet test tests\ReaWin.Tests` runs the unit tests (the real-mo
   Do not add a way to export or browse it separately. REA's `procedure_callers` is the exact inverse of `procedure_callees`, so only callees are saved.
 - **Defaults:** context 32,768 (`AiProfile.DefaultContextSize`, `ReaSettings.Revision` migrates a saved 8,192 once); above 16,384 the KV cache is `q8_0`.
 - **No new dependency beyond `AiSlop.LocalLlm`** (private feed, `nuget.config`; see the `aislop-nuget-packages` skill).
+
+## Graph tab
+
+- **A focused neighbourhood, never the whole graph.** A real program is one connected knot (a 3,039-function program had 2,872 in one component, and two
+  hops from a function reach a median of 159 and a 90th percentile of 835 functions through runtime hubs). Keep the caps, hub rule and library hiding in
+  `GraphModel`; do not add a "show everything" mode or a force-directed layout.
+- **Library and runtime functions are hidden by default**, and hubs are not followed through; the status line must say what is hidden. Library status comes
+  from Ghidra's "Library Function" comment in the decompiled code (`FunctionContextBuilder.IsLibraryCode`), so it is known only for decompiled functions.
+- **Layout and model are pure** (no WPF types) and tested; keep rendering in `GraphCanvas`, one element that draws, with viewport culling and level of detail.
+  Do not build one control per node. Colors come from the tokens, looked up when drawing; `ThemeManager.Changed` repaints.
+- **Node actions are a list, not code in the canvas.** `MainWindow.Graph.cs` holds `_graphActions` (`GraphAction`: id, label, availability, run). The side panel
+  and the right-click pop-up are both built from it. To add an action (explain, copy, mark) add one entry in `RegisterGraphActions`; do not touch the canvas.
+  Only actions that work are listed: the planned ones (explain this function, explain with neighbours) are noted in that method and not shown until real.
+- **The graph shows REA's observations.** An AI note on a node is marked as inference. The graph is direct calls only and says so.
 
 Good next features:
 - Find `main` or the WinMain-like function from the entry's callees.

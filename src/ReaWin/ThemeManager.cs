@@ -17,6 +17,9 @@ public static class ThemeManager
 
     private const int DwmUseImmersiveDarkMode = 20;
     private static string _setting = FollowWindows;
+
+    /// <summary>Raised after the token dictionary was replaced, for views that draw themselves and so do not follow DynamicResource.</summary>
+    public static event Action? Changed;
     private static bool _hooked;
 
     /// <summary>Applies "system", "light" or "dark"; anything else is treated as "system".</summary>
@@ -47,6 +50,7 @@ public static class ThemeManager
         // Tokens are the first merged dictionary; replacing it restyles every DynamicResource at once.
         Application.Current.Resources.MergedDictionaries[0] = new ResourceDictionary { Source = source };
         foreach (Window w in Application.Current.Windows) SetTitleBar(w, dark);
+        Changed?.Invoke();
     }
 
     /// <summary>True when the dark tokens are in use (for assets that come in light and dark versions).</summary>

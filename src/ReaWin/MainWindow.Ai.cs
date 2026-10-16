@@ -97,6 +97,7 @@ public partial class MainWindow
         else hint = $"Describes the selected function with {AiProfile.ModelLabel}, running on this PC.";
 
         ExplainButton.IsEnabled = !_aiBusy && CurrentAi.Enabled && fault is null && proc is { IsImport: false };
+        ShowInGraphButton.IsEnabled = _hasResults && proc is { IsImport: false };
         ExplainButton.ToolTip = hint;
         AiHint.Text = hint;
         AiStopButton.Visibility = _aiBusy ? Visibility.Visible : Visibility.Collapsed;
@@ -182,6 +183,7 @@ public partial class MainWindow
     {
         _callGraph = graph;
         _graphIndex = new CallGraphIndex(graph);
+        OnCallGraphChanged();
     }
 
     /// <summary>
