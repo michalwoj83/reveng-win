@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
+using AiSlop.LocalLlm;
 using Microsoft.Win32;
 using ReaWin.Models;
 using ReaWin.Services;
@@ -56,6 +57,7 @@ public partial class MainWindow : Window
         ThemeManager.Attach(this);
         ThemeManager.Apply(_settings.Theme);
         UpdateSetupState();
+        InitializeAi();
         RefreshProjectList(null);
         if (ProjectsList.Items.Count > 0) LeftTabs.SelectedItem = ProjectsTab;
         Closing += (_, _) =>
@@ -64,6 +66,7 @@ public partial class MainWindow : Window
             _cts?.Cancel();
             _bulkCts?.Cancel();
             SaveOnExit();
+            DisposeLlm();
             DisposeSession();
         };
     }
@@ -76,6 +79,8 @@ public partial class MainWindow : Window
         SaveSettings();
         ThemeManager.Apply(_settings.Theme);
         UpdateSetupState();
+        CreateLlm();            // the AI settings may have changed: a new provider, and the old model server stops
+        WarmUpIfRequested();
     }
 
     /// <summary>Re-checks the Ghidra folder and JDK with the same rules as the Settings dialog.</summary>
@@ -102,6 +107,10 @@ public partial class MainWindow : Window
             (glyph, text, glyphBrush, textBrush, bg) = ("◔", _analyzing ? "Analyzing" : "Working", "LiveBrush", "TextBrush", "TintBrush");
         else if (_bulkCts is not null)
             (glyph, text, glyphBrush, textBrush, bg) = ("◔", "Decompiling", "LiveBrush", "TextBrush", "TintBrush");
+        else if (_aiBusy)
+            (glyph, text, glyphBrush, textBrush, bg) = ("◔", _llm.State == LlmState.Starting ? "Loading AI model" : "AI describing", "LiveBrush", "TextBrush", "TintBrush");
+        else if (_llm.State == LlmState.Starting)
+            (glyph, text, glyphBrush, textBrush, bg) = ("◔", "Loading AI model", "LiveBrush", "TextBrush", "TintBrush");
         else if (_lastError)
             (glyph, text, glyphBrush, textBrush, bg) = ("✕", "Last run failed", "ErrBrush", "ErrBrush", "ErrBgBrush");
         else
@@ -440,6 +449,7 @@ public partial class MainWindow : Window
     private async void Functions_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (FunctionsGrid.SelectedItem is ProcedureInfo proc) await ShowFunctionAsync(proc);
+        else { SetAiPanelVisible(false); RefreshAiUi(); }
     }
 
     /// <summary>Shows one function's code: from the cache when present, otherwise one fast query to the session.</summary>
@@ -447,6 +457,7 @@ public partial class MainWindow : Window
     {
         var version = ++_selectionVersion;
         CodeHeader.Text = $"{proc.Name}   @ {proc.Address}";
+        ShowDescriptionFor(proc);   // the AI description of this function, if there is one (or the "working" panel)
 
         if (proc.IsImport)
         {
@@ -621,6 +632,10 @@ public partial class MainWindow : Window
         _strings = new();
         _decompiled.Clear();
         _decompileErrors.Clear();
+        _aiCts?.Cancel();               // a description for the analysis being left must not land in the next one
+        _analysisGeneration++;
+        _descriptions.Clear();
+        SetAiPanelVisible(false);
         _selectionVersion++;
         FunctionsGrid.ItemsSource = null;
         StringsGrid.ItemsSource = null;
@@ -684,6 +699,7 @@ public partial class MainWindow : Window
         Strings = _strings.ToList(),
         Decompiled = new Dictionary<string, string>(_decompiled),
         DecompileErrors = new Dictionary<string, string>(_decompileErrors),
+        Descriptions = new Dictionary<string, FunctionDescription>(_descriptions),
     };
 
     /// <summary>Stores the current analysis in the app's project folder and refreshes the Projects list.</summary>
@@ -804,6 +820,7 @@ public partial class MainWindow : Window
             _strings = project.Strings;
             foreach (var (address, code) in project.Decompiled) _decompiled[address] = code;
             foreach (var (address, error) in project.DecompileErrors) _decompileErrors[address] = error;
+            foreach (var (address, description) in project.Descriptions) _descriptions[address] = description;
 
             OverviewBox.Text = FormatOverview(Path.GetFileName(project.TargetPath), project.Overview, _procedures);
             ApplyFunctionFilter();
@@ -976,7 +993,8 @@ public partial class MainWindow : Window
                         string.IsNullOrWhiteSpace(saved.JavaHome) ? defaults.JavaHome : saved.JavaHome,
                         string.IsNullOrWhiteSpace(saved.ReaScript) ? defaults.ReaScript : saved.ReaScript,
                         "node",
-                        string.IsNullOrWhiteSpace(saved.Theme) ? ThemeManager.FollowWindows : saved.Theme);
+                        string.IsNullOrWhiteSpace(saved.Theme) ? ThemeManager.FollowWindows : saved.Theme,
+                        saved.Ai);
             }
         }
         catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException) { }

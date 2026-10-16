@@ -1,3 +1,4 @@
+using AiSlop.LocalLlm;
 using System.Text.Json.Serialization;
 
 namespace ReaWin.Models;
@@ -94,6 +95,21 @@ public sealed record ProjectFile
     public Dictionary<string, string> Decompiled { get; init; } = new();
     /// <summary>REA's own error text for functions it could not decompile, by address.</summary>
     public Dictionary<string, string> DecompileErrors { get; init; } = new();
+    /// <summary>
+    /// AI descriptions by function address. These are the model's <b>inferences</b>, kept apart from everything above, which
+    /// REA observed. Projects saved before this existed simply have none.
+    /// </summary>
+    public Dictionary<string, FunctionDescription> Descriptions { get; init; } = new();
+}
+
+/// <summary>
+/// A description of one function written by the local AI model: an inference from the decompiled code, not an observation.
+/// Stored with the model that wrote it and how much of the code it saw, so it is never mistaken for REA output.
+/// </summary>
+public sealed record FunctionDescription(string Text, int CodeCharsSent, int CodeCharsTotal, string Model, DateTime GeneratedUtc)
+{
+    /// <summary>True when the function was longer than the model's context window and its tail was not shown to it.</summary>
+    [JsonIgnore] public bool Truncated => CodeCharsSent < CodeCharsTotal;
 }
 
 public sealed record StringInfo(string Address, string Value);
@@ -109,9 +125,12 @@ public sealed record OverviewResult(
     IReadOnlyList<SegmentInfo> Segments,
     IReadOnlyList<string> Limitations);
 
-/// <summary>User settings. <paramref name="Theme"/> is "system" (follow Windows), "light" or "dark".</summary>
+/// <summary>
+/// User settings. <paramref name="Theme"/> is "system" (follow Windows), "light" or "dark". <paramref name="Ai"/> is null
+/// until the user first opens the AI settings; the app then uses <c>AiProfile.DefaultSettings</c> (AI off).
+/// </summary>
 public sealed record ReaSettings(string GhidraInstallDir, string JavaHome, string ReaScript, string NodeExe,
-    string Theme = "system");
+    string Theme = "system", AiSettings? Ai = null);
 
 /// <summary>A JDK found on disk. The version comes from its `release` file; java.exe is never run.</summary>
 public sealed record JavaInstall(string Home, int Major, string Version, string Vendor, bool Is64Bit)

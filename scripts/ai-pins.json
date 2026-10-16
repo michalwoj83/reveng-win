@@ -1,0 +1,52 @@
+{
+  "llama": {
+    "name": "PrismML build, CUDA 13.3",
+    "repo": "PrismML-Eng/llama.cpp",
+    "tag": "prism-b10777-e3de715",
+    "url": "https://github.com/PrismML-Eng/llama.cpp/releases/download/prism-b10777-e3de715/llama-prism-b10777-e3de715-bin-win-cuda-13.3-x64.zip",
+    "sha256": "071088ef64f2e62dfb488f4d73cc368df945f9c0e8c7019bc94daf9abd0eb4aa",
+    "extra": [
+      {
+        "url": "https://github.com/PrismML-Eng/llama.cpp/releases/download/prism-b10777-e3de715/cudart-llama-bin-win-cuda-13.3-x64.zip",
+        "sha256": "1462a050eb4c684921ba51dcc4cc488a036674c3e73e9945ee705b854808d03e"
+      }
+    ]
+  },
+  "llamaAlternatives": {
+    "cuda-12.4": {
+      "name": "PrismML build, CUDA 12.4 (the maker's pick when 13.3 misbehaves on Windows)",
+      "repo": "PrismML-Eng/llama.cpp",
+      "tag": "prism-b10777-e3de715",
+      "url": "https://github.com/PrismML-Eng/llama.cpp/releases/download/prism-b10777-e3de715/llama-prism-b10777-e3de715-bin-win-cuda-12.4-x64.zip",
+      "sha256": "fa5874a1412e251a6efb13f289e97bacbbb4e7fc6714c1836b4fc6c1dc863462",
+      "extra": [
+        {
+          "url": "https://github.com/PrismML-Eng/llama.cpp/releases/download/prism-b10777-e3de715/cudart-llama-bin-win-cuda-12.4-x64.zip",
+          "sha256": "8c79a9b226de4b3cacfd1f83d24f962d0773be79f1e7b75c6af4ded7e32ae1d6"
+        }
+      ]
+    },
+    "cpu": {
+      "name": "PrismML build, CPU only (works everywhere, slow for a 27B model)",
+      "repo": "PrismML-Eng/llama.cpp",
+      "tag": "prism-b10777-e3de715",
+      "url": "https://github.com/PrismML-Eng/llama.cpp/releases/download/prism-b10777-e3de715/llama-prism-b10777-e3de715-bin-win-cpu-x64.zip",
+      "sha256": "cff7eeff19163e6263720618cf98023715b8dac14d0873f5be0918765de323c4"
+    },
+    "vulkan": {
+      "name": "PrismML build, Vulkan (PTQ1_0 only; see the model's known issues)",
+      "repo": "PrismML-Eng/llama.cpp",
+      "tag": "prism-b10777-e3de715",
+      "url": "https://github.com/PrismML-Eng/llama.cpp/releases/download/prism-b10777-e3de715/llama-prism-b10777-e3de715-bin-win-vulkan-x64.zip",
+      "sha256": "6bf30d60dd35ae1129ae221593d79bed053c775c6ce8554f75cfe171f3028f10"
+    }
+  },
+  "models": {
+    "en": {
+      "name": "Ternary Bonsai 2 27B, PTQ1_0 (Apache-2.0, prism-ml; needs the PrismML llama.cpp build)",
+      "url": "https://huggingface.co/prism-ml/Ternary-Bonsai-2-27B-gguf/resolve/b072e1d3b35a0a630cece372c2127528e0994386/Ternary-Bonsai-2-27B-PTQ1_0.gguf",
+      "sha256": "53107f530aa52eb00912263ab1ee29bd199261c87cd7b4ad4ca1318c1fe33ee3",
+      "size": 5946648928
+    }
+  }
+}

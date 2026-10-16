@@ -4,7 +4,14 @@
         Title="Settings" Width="780" SizeToContent="Height" ResizeMode="NoResize"
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
         Style="{StaticResource AppWindow}">
-    <StackPanel Margin="20">
+    <!-- The content scrolls on a small screen; OK and Cancel stay in view. -->
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+    <StackPanel Margin="20,20,20,0">
 
         <!-- Ghidra -->
         <TextBlock Text="Ghidra install folder" Style="{StaticResource MutedText}" FontSize="12" FontWeight="Medium" />
@@ -54,6 +61,26 @@
             <RadioButton x:Name="ThemeDarkRadio" GroupName="Theme" Content="Dark" />
         </StackPanel>
 
+        <!-- Local AI: only whether it is on and how it runs. The model and engine are installed by scripts\Install-Ai.ps1. -->
+        <TextBlock Margin="0,18,0,0" Text="Local AI" Style="{StaticResource MutedText}" FontSize="12" FontWeight="Medium" />
+        <CheckBox x:Name="AiEnabledBox" Margin="0,8,0,0" Content="Describe functions with the local AI model"
+                  Checked="AiEnabled_Changed" Unchecked="AiEnabled_Changed" />
+        <TextBlock x:Name="AiStatus" Margin="0,4,0,0" TextWrapping="Wrap" FontSize="12" />
+        <StackPanel x:Name="AiOptions" Margin="0,10,0,0">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="Run on" VerticalAlignment="Center" Margin="0,0,14,0" Style="{StaticResource MutedText}" />
+                <RadioButton x:Name="AiCpuRadio" GroupName="AiProcessor" Content="CPU (works everywhere, slow for a 27B model)" Margin="0,0,20,0" />
+                <RadioButton x:Name="AiGpuRadio" GroupName="AiProcessor" Content="GPU" />
+            </StackPanel>
+            <TextBlock x:Name="AiGpuStatus" Margin="0,4,0,0" Style="{StaticResource CaptionText}" />
+            <CheckBox x:Name="AiWithAppBox" Margin="0,10,0,0" Content="Load the model when the app starts (the first description does not wait for it)" />
+            <DockPanel Margin="0,10,0,0">
+                <TextBlock Text="Context size (tokens)" VerticalAlignment="Center" Margin="0,0,14,0" Style="{StaticResource MutedText}" />
+                <TextBox x:Name="AiContextBox" Width="100" HorizontalAlignment="Left" AutomationProperties.Name="Context size in tokens" />
+            </DockPanel>
+            <TextBlock x:Name="AiContextStatus" Margin="0,4,0,0" TextWrapping="Wrap" FontSize="12" />
+        </StackPanel>
+
         <TextBlock Margin="0,14,0,0" Style="{StaticResource CaptionText}"
                    Text="Values apply to REA child processes only; nothing is written to your environment." />
 
@@ -65,9 +92,12 @@
             </StackPanel>
         </Border>
 
-        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+    </StackPanel>
+        </ScrollViewer>
+
+        <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="20,12,20,20">
             <Button Content="Cancel" IsCancel="True" MinWidth="84" />
             <Button Content="OK" Style="{StaticResource PrimaryButton}" IsDefault="True" MinWidth="84" Margin="8,0,0,0" Click="Ok_Click" />
         </StackPanel>
-    </StackPanel>
+    </Grid>
 </Window>

@@ -184,22 +184,59 @@
                                         </DataGrid.Columns>
                                     </DataGrid>
                                     <GridSplitter Grid.Column="1" HorizontalAlignment="Stretch" ResizeBehavior="PreviousAndNext" />
-                                    <DockPanel Grid.Column="2">
-                                        <TextBlock x:Name="CodeHeader" DockPanel.Dock="Top" FontWeight="SemiBold" Margin="0,2,0,8"
+                                    <Grid Grid.Column="2">
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition x:Name="CodeRow" Height="*" MinHeight="120" />
+                                            <!-- 0 while there is no description; MainWindow.Ai.cs gives the panel 4 parts to the code's 5 -->
+                                            <RowDefinition x:Name="AiRow" Height="0" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
+                                        <TextBlock Grid.Row="0" x:Name="CodeHeader" FontWeight="SemiBold" Margin="0,2,0,8"
                                                    TextTrimming="CharacterEllipsis" Text="Select a function to see its decompiled code." />
-                                        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,8,0,0">
-                                            <Button Content="Explain" Style="{StaticResource TonalButton}" IsEnabled="False" Margin="0,0,8,0"
-                                                    ToolTip="AI features are not available yet." />
-                                            <Button Content="Summarize" Style="{StaticResource TonalButton}" IsEnabled="False" Margin="0,0,10,0"
-                                                    ToolTip="AI features are not available yet." />
-                                            <TextBlock Text="AI actions arrive with the AI features." Style="{StaticResource CaptionText}"
-                                                       VerticalAlignment="Center" />
-                                        </StackPanel>
-                                        <Border CornerRadius="10" BorderThickness="1" BorderBrush="{DynamicResource LineBrush}"
+                                        <Border Grid.Row="1" CornerRadius="10" BorderThickness="1" BorderBrush="{DynamicResource LineBrush}"
                                                 Background="{DynamicResource CanvasBrush}">
                                             <TextBox x:Name="CodeBox" Style="{StaticResource CodeBox}" AutomationProperties.Name="Decompiled code" />
                                         </Border>
-                                    </DockPanel>
+
+                                        <!-- The model's description: an inference, tagged as one and kept apart from REA's code above. -->
+                                        <Border Grid.Row="2" x:Name="AiPanel" Visibility="Collapsed" Margin="0,8,0,0" Padding="12,8"
+                                                CornerRadius="10" BorderThickness="1" BorderBrush="{DynamicResource LineBrush}"
+                                                Background="{DynamicResource SurfaceBrush}">
+                                            <DockPanel>
+                                                <!-- tag on the left, actions on the right: one row, so the text below gets the room -->
+                                                <DockPanel DockPanel.Dock="Top">
+                                                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                                                        <Button x:Name="AiCopyButton" Content="Copy" Style="{StaticResource TextButton}" MinHeight="26"
+                                                                Padding="10,0" Click="AiCopy_Click" />
+                                                        <Button x:Name="AiDiscardButton" Content="Discard" Style="{StaticResource TextButton}" MinHeight="26"
+                                                                Padding="10,0" Click="AiDiscard_Click"
+                                                                ToolTip="Remove this description from the project. The code is not affected." />
+                                                    </StackPanel>
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <Border x:Name="AiTag" Style="{StaticResource Pill}" Background="Transparent" BorderThickness="1"
+                                                                BorderBrush="{DynamicResource WarnBrush}"
+                                                                ToolTip="The model's reading of the code, not something REA observed.">
+                                                            <TextBlock Text="Inference · AI" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource WarnBrush}" />
+                                                        </Border>
+                                                        <TextBlock x:Name="AiState" FontWeight="SemiBold" VerticalAlignment="Center" Visibility="Collapsed" />
+                                                    </StackPanel>
+                                                </DockPanel>
+                                                <TextBlock x:Name="AiNote" DockPanel.Dock="Top" Margin="0,4,0,6" Style="{StaticResource CaptionText}" />
+                                                <TextBox x:Name="AiText" Style="{StaticResource ReadingBox}" TextWrapping="Wrap"
+                                                         AutomationProperties.Name="AI description of the function" />
+                                            </DockPanel>
+                                        </Border>
+
+                                        <DockPanel Grid.Row="3" Margin="0,8,0,0" LastChildFill="True">
+                                            <Button DockPanel.Dock="Left" x:Name="ExplainButton" Content="Explain" Style="{StaticResource TonalButton}" IsEnabled="False"
+                                                    Margin="0,0,8,0" Click="Explain_Click" />
+                                            <Button DockPanel.Dock="Left" x:Name="AiStopButton" Content="Stop" Style="{StaticResource TextButton}" MinHeight="28"
+                                                    Visibility="Collapsed" Margin="0,0,8,0" Click="AiStop_Click" />
+                                            <TextBlock x:Name="AiHint" Style="{StaticResource CaptionText}" VerticalAlignment="Center"
+                                                       TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" />
+                                        </DockPanel>
+                                    </Grid>
                                 </Grid>
                             </DockPanel>
                         </TabItem>

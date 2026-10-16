@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using AiSlop.LocalLlm;
 using Microsoft.Win32;
 using ReaWin.Models;
 using ReaWin.Services;
@@ -19,6 +20,7 @@ public partial class SettingsWindow : Window
     public SettingsWindow(ReaSettings current)
     {
         InitializeComponent();
+        MaxHeight = SystemParameters.WorkArea.Height * 0.95;   // never taller than the screen; the content scrolls
         _current = current;
         Result = current;
 
@@ -33,7 +35,67 @@ public partial class SettingsWindow : Window
         }).IsChecked = true;
         LoadJavaList(current.JavaHome);
         ShowGhidraStatus();
+
+        var ai = AiProfile.Resolve(current);
+        AiEnabledBox.IsChecked = ai.Enabled;
+        (ai.Processor == AiProcessor.Gpu ? AiGpuRadio : AiCpuRadio).IsChecked = true;
+        AiWithAppBox.IsChecked = ai.Startup == AiStartup.WithApp;
+        AiContextBox.Text = ai.ContextSize.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        AiOptions.IsEnabled = ai.Enabled;
+        ShowAiStatus();
         _loading = false;
+        Loaded += async (_, _) => await DetectGpuAsync();
+    }
+
+    // ---- Local AI -------------------------------------------------------------
+
+    private void AiEnabled_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_loading) return;
+        AiOptions.IsEnabled = AiEnabledBox.IsChecked == true;
+    }
+
+    /// <summary>Whether the engine and model are where the app looks; if not, the message says how to install them.</summary>
+    private void ShowAiStatus()
+    {
+        var files = AiFiles.Locate();
+        var problems = AiProfile.ForEngine(AiProfile.DefaultSettings, files).Validate()
+            .Where(p => p.Contains("not installed", StringComparison.OrdinalIgnoreCase)).ToList();
+        if (problems.Count == 0) SetStatus(AiStatus, $"AI engine and model found ({files.Folder}).", ok: true);
+        else SetStatus(AiStatus, problems[0], ok: false);
+    }
+
+    /// <summary>
+    /// Asks the engine itself which GPUs it can use (it is the PrismML build that decides, not Windows). GPU stays unavailable
+    /// until it reports one, so the choice can never promise what will not run.
+    /// </summary>
+    private async Task DetectGpuAsync()
+    {
+        var files = AiFiles.Locate();
+        AiGpuStatus.Text = "Checking for a usable GPU…";
+        IReadOnlyList<string> devices = files.ServerPresent ? await GpuSupport.DetectAsync(files.ServerPath) : [];
+        if (devices.Count > 0)
+        {
+            AiGpuRadio.IsEnabled = true;
+            AiGpuStatus.Text = $"GPU found: {devices[0]}. GPU is much faster; it needs about 7 GB of its memory for this model.";
+        }
+        else
+        {
+            AiGpuRadio.IsEnabled = false;
+            if (AiGpuRadio.IsChecked == true) AiCpuRadio.IsChecked = true;
+            AiGpuStatus.Text = files.ServerPresent
+                ? "The engine found no usable GPU, so GPU is not offered."
+                : "GPU can be chosen once the engine is installed.";
+        }
+    }
+
+    /// <summary>The context size field, checked against the same range the engine accepts; shows the problem under the field.</summary>
+    private bool TryReadContextSize(out int size)
+    {
+        var ok = int.TryParse(AiContextBox.Text.Trim(), out size) && size is >= 512 and <= 131072;
+        if (ok) AiContextStatus.Text = "";
+        else SetStatus(AiContextStatus, "Context size must be a whole number between 512 and 131072.", ok: false);
+        return ok;
     }
 
     // ---- Ghidra ---------------------------------------------------------------
@@ -142,6 +204,8 @@ public partial class SettingsWindow : Window
 
     private void Ok_Click(object sender, RoutedEventArgs e)
     {
+        if (!TryReadContextSize(out var contextSize)) { AiContextBox.Focus(); return; }
+
         var ghidra = GhidraLocator.Inspect(GhidraBox.Text);
         var problems = new List<string>();
         if (!ghidra.IsValid) problems.Add("Ghidra folder: " + ghidra.Message);
@@ -158,7 +222,15 @@ public partial class SettingsWindow : Window
             _current.NodeExe,
             ThemeLightRadio.IsChecked == true ? ThemeManager.Light
                 : ThemeDarkRadio.IsChecked == true ? ThemeManager.Dark
-                : ThemeManager.FollowWindows);
+                : ThemeManager.FollowWindows,
+            // the port stays whatever it was; paths to the installed files are never saved
+            AiProfile.Resolve(_current) with
+            {
+                Enabled = AiEnabledBox.IsChecked == true,
+                Processor = AiGpuRadio.IsChecked == true ? AiProcessor.Gpu : AiProcessor.Cpu,
+                Startup = AiWithAppBox.IsChecked == true ? AiStartup.WithApp : AiStartup.OnFirstUse,
+                ContextSize = contextSize,
+            });
         DialogResult = true;
     }
 }

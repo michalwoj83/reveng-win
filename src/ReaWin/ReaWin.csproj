@@ -12,6 +12,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="AiSlop.LocalLlm" Version="0.2.0" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- The WPF SDK drops System.IO from implicit usings. -->
     <Using Include="System.IO" />
   </ItemGroup>

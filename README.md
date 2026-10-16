@@ -88,6 +88,30 @@ started again only if you select a function whose code was not stored, and then 
 copies the current project to a `.reaproj` file anywhere, and *Open file…* loads one (it is then added to the
 list). If the analyzed file has changed since the project was stored, the Log tab says so.
 
+## Local AI: describe a function
+
+Select a function and press **Explain**: the local model reads the decompiled code and writes a short description (summary, inputs, behavior, calls,
+what is unclear). It runs on this PC through `AiSlop.LocalLlm`; nothing is sent anywhere. The description appears in its own panel tagged
+**Inference · AI**, with the model's name and a reminder to check it against the code. It is saved in the project, so reopening a project shows it
+again. *Copy* puts it on the clipboard, *Discard* removes it from the project, *Stop* cancels a running request.
+
+Set it up once:
+
+```powershell
+./scripts/Install-Ai.ps1            # about 6 GB: the PrismML llama.cpp build (CUDA 13.3) and the Ternary Bonsai 2 27B model, both verified
+```
+
+then turn on *Local AI* in Settings. Notes:
+
+- The model (prism-ml/Ternary-Bonsai-2-27B-gguf, PTQ1_0, Apache-2.0) **needs the PrismML build of llama.cpp**; stock llama.cpp cannot load it. The script installs
+  that build. `-Engine cuda-12.4` is the maker's fallback on Windows if the default exits without a message, `-Engine cpu` works everywhere but is slow for
+  a 27B model, `-Engine vulkan` has caveats on the model's known-issues page.
+- The model file is 5.9 GB, so GPU use is meant for cards with roughly 8 GB or more (not tested on every card). Settings offer GPU only if the engine itself reports a usable one; the CPU is the default.
+- The model thinks by default; the app turns that off for descriptions, so there is no long reasoning wait. Loading the model still takes a while the first time (see *Load the model when the app starts*).
+- Functions longer than the context window are cut at a line break; the panel says how much of the function the model saw. Raise *Context size* in Settings
+  for more (memory grows).
+- The installer script needs the shared installer kit (`ai-tooling/windows/llm-installer`) next to this repository, or `-Kit` / `AISLOP_KIT`.
+
 ## Known limitations
 
 - The first analysis of a binary is slow, because Ghidra's auto-analysis is. REA's own `--snapshot` does not

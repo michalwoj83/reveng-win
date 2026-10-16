@@ -21,7 +21,14 @@ src/ReaWin/
   Services/ProjectLibrary.cs app project folder: `.reaproj` + small `.json` catalog entry, keyed by name + SHA-256
   Services/JavaLocator.cs   find installed JDKs from registry/folders/PATH (reads `release`, never runs java)
   Services/GhidraLocator.cs validate a Ghidra release folder by file layout
-  SettingsWindow.xaml(.cs)  pick the Ghidra folder, a JDK 21+, and the appearance
+  Services/AiProfile.cs     what is specific to the shipped model: server args, request fields, defaults, messages
+  Services/AiFiles.cs       where the AI engine and model live (override, beside the app, or the user folder)
+  Services/FunctionPrompts.cs  the "describe this function" prompt, truncation and reply clean-up (tested)
+  Services/FunctionDescriber.cs asks the local model to describe one function
+  MainWindow.Ai.cs          the Explain button, the AI panel, the provider lifecycle
+  scripts/Install-Ai.ps1    installs the PrismML llama.cpp build and the Bonsai model (pins in scripts/ai-pins.json)
+  tests/ReaWin.Tests        prompts, clean-up, settings and project compatibility, AI files; real-model test is env-gated
+  SettingsWindow.xaml(.cs)  pick the Ghidra folder, a JDK 21+, the appearance, and the local AI options
   ThemeManager.cs           light/dark/follow-Windows: swaps the token dictionary, dark title bar
   Themes/Tokens.*.xaml      semantic color brushes (light, dark); same keys in both
   Themes/Controls.xaml      control templates and shared styles (buttons, tabs, grids, lists, scroll bars…)
@@ -40,7 +47,8 @@ dotnet run
 
 Prerequisites: .NET 8 SDK, Node.js 22.19+/24.11+, `npm install --global rea-agents`, a Ghidra 12.1.x **release**
 (not a source clone), and a full JDK 21+. Paths are set in the app's settings expander; use "Run rea doctor"
-to check them. There is no automated test project yet. Verify changes by building, then exercising the code path.
+to check them. `dotnet test tests\ReaWin.Tests` runs the unit tests (the real-model test is skipped unless `REAWIN_LLAMA_SERVER` and
+`REAWIN_LLAMA_MODEL` are set). Verify UI changes by building, then running the app.
 
 ## How REA is called
 
@@ -111,6 +119,21 @@ to check them. There is no automated test project yet. Verify changes by buildin
 3. Add a tab or control in `MainWindow.xaml` and wire it with `BeginWork`/`EndWork` so the UI shows progress and can cancel.
 4. Handle `ReaException` and `OperationCanceledException`.
 5. Update `README.md` (tabs table and limitations) when behavior changes.
+
+## Local AI (describing functions)
+
+- **What it does:** the Explain button describes the selected function with Ternary Bonsai 2 27B (PTQ1_0) through `AiSlop.LocalLlm`. Nothing leaves the
+  machine. It is off until the user turns it on in Settings.
+- **The model needs PrismML's llama.cpp build.** Stock llama.cpp rejects its quantization types. `scripts/Install-Ai.ps1` installs the pinned build
+  (default CUDA 13.3; `-Engine cuda-12.4|cpu|vulkan` for the others) and the model, verified by SHA-256, into `%LocalAppData%\ReverseEngineerAI\ai`
+  (override: `REAWIN_AI_DIR`). Do not switch to a stock build or another quantization without checking the model card's known issues.
+- **It is a reasoning model.** Every request sends `reasoning_effort: "none"`; without it the model thinks for thousands of tokens. Sampling follows the
+  model card's non-thinking set except the presence penalty (describing code repeats identifiers). All of this lives in `AiProfile`.
+- **Inference stays apart from observation.** A description is shown in its own panel tagged "Inference · AI" with the model's name, stored in the project
+  under `Descriptions` (never mixed into `Decompiled`), and never edits or replaces code. It is removed only by Discard.
+- **Prompts live in `FunctionPrompts.cs`** with tests: the code is the only source of truth, `FUN_`/`DAT_`/`param_` names are placeholders, "probably"
+  marks inference, "Unclear" says what one function cannot show. Long functions are cut at a line break and the UI says how much the model saw.
+- **No new dependency beyond `AiSlop.LocalLlm`** (private feed, `nuget.config`; see the `aislop-nuget-packages` skill).
 
 Good next features:
 - Find `main` or the WinMain-like function from the entry's callees.
