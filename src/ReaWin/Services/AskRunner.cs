@@ -14,7 +14,7 @@ public sealed record AskResult(FunctionDescription Description, FunctionAlias? A
 /// (its explanation and alias), which the next request gets as context. A request is answered in the same two rounds as an explanation, with the
 /// request given to both, so that everything the model generated for the function is refreshed to match it, and generated when it did not exist:
 /// <list type="number">
-/// <item>the explanation (with an Answer line, a name and a brief), written from the code, the usual context, the previous explanation and the request;</item>
+/// <item>the explanation (with its name and brief, the request worked into it as extra context, never mentioned), written from the code, the usual context, the previous explanation and the request;</item>
 /// <item>the alias implementation, from the code, the new explanation, the current alias and the request, checked against the original as always.</item>
 /// </list>
 /// A request that is not about the code is refused by the model in round one and nothing changes.

@@ -27,6 +27,7 @@ public static class FunctionDescriber
         var built = FunctionPrompts.Build(function, contextSize, context, request, previous);
         var raw = await LlmCompletion.CollectAsync(llm.StreamCompletionAsync(built.Request, ct), ct);
         var text = FunctionPrompts.FormatReply(raw);
+        if (!string.IsNullOrWhiteSpace(request) && !FunctionPrompts.TryReadRefusal(text, out _)) text = FunctionPrompts.FoldStrayAnswer(text);
 
         if (text.Length == 0)
             throw new DescriptionException("The model did not return a description. Try again.");

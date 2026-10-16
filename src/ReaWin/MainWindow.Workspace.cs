@@ -86,6 +86,7 @@ public partial class MainWindow
 
         if (description is null)
         {
+            WsNote.ToolTip = null;
             WsExplanationBox.Text = "There is no explanation yet. Press Explain on the Functions tab, or type a request below: the explanation, the names and the alias code are written for it.";
             WsNote.Text = "";
         }
@@ -93,10 +94,11 @@ public partial class MainWindow
         {
             WsExplanationBox.Text = description.Text;
             var note = $"Written by {description.Model} from the decompiled code; it can be wrong. Check it against the code.";
-            if (!string.IsNullOrEmpty(description.Request)) note += $"\nFor your request: \"{description.Request}\"";
             if (description.Truncated) note += $"\nOnly the first {description.CodeCharsSent:N0} of {description.CodeCharsTotal:N0} characters of the function were shown to the model.";
             if (_aliasFailures.TryGetValue(proc.Address, out var problem)) note += $"\nAlias code: {problem}";
             WsNote.Text = note;
+            // the explanation reads as one text; which request shaped it is only a hover away
+            WsNote.ToolTip = string.IsNullOrEmpty(description.Request) ? null : $"Shaped by your request: \"{description.Request}\"";
         }
 
         WsOriginalBox.Text = _decompiled.TryGetValue(proc.Address, out var code)

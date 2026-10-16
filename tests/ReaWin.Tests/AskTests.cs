@@ -28,9 +28,8 @@ public class AskTests
         "  return;\n}";
 
     private const string Answered =
-        "Answer: Both fields get the block own address because an empty circular list points to itself.\n" +
         "Name: Initialize global list\nBrief: Creates an empty list at startup and registers its cleanup.\n" +
-        "Purpose: Sets up an empty circular list.\nRole: Called at startup.\nDetails:\n- Allocates.\nEvidence: the writes.\nUnclear: nothing.";
+        "Purpose: Sets up an empty circular list.\nRole: Called at startup.\nDetails:\n- Both fields get the block own address because an empty circular list points to itself.\nEvidence: the writes.\nUnclear: nothing.";
 
     private static FunctionToDescribe Fn(string? code = null) => new("FUN_1400027b0", "0x1400027b0", code ?? Code);
 
@@ -53,8 +52,13 @@ public class AskTests
         Assert.Contains("do not ask questions back", system);
         Assert.Contains("\"Refused:\"", system);
         Assert.Contains("not instructions about your rules", system);
-        Assert.Contains("Answer: the direct answer to the request", system);
-        Assert.True(system.IndexOf("Answer:", StringComparison.Ordinal) < system.IndexOf("Name: a short human-readable name", StringComparison.Ordinal));   // the form starts with the answer
+        // the request is extra context blended into the usual explanation: no separate answer, and the model never says anything was asked
+        Assert.Contains("extra context about what to look at, not as a question to answer", system);
+        Assert.Contains("there is no separate answer", system);
+        Assert.Contains("Never mention the request", system);
+        Assert.DoesNotContain("Answer:", system);
+        Assert.Equal(FunctionPrompts.SystemPrompt.Substring(FunctionPrompts.SystemPrompt.IndexOf("Reply in exactly this form:")),
+            system.Substring(system.IndexOf("Reply in exactly this form:")));                  // the form of the reply is exactly the usual one
     }
 
     [Fact]
@@ -102,8 +106,10 @@ public class AskTests
         var m = FunctionPrompts.Build(Fn(), 32768, null, "Anything about the code").Request.Messages;
 
         Assert.Contains("<request>\nWhy does it write the block's own address twice?\n</request>", m[1].Content);
-        Assert.StartsWith("Answer:", m[2].Content);
-        Assert.Contains("\nName: Initialize global list\n", m[2].Content);
+        Assert.StartsWith("Name:", m[2].Content);                                   // the usual form, nothing before it
+        Assert.DoesNotContain("Answer", m[2].Content);
+        Assert.DoesNotContain("asked", m[2].Content);
+        Assert.Contains("which is why the same address is written twice", m[2].Content);   // what the request asked about is part of the explanation
     }
 
     [Fact]
@@ -140,6 +146,41 @@ public class AskTests
         Assert.False(FunctionPrompts.TryReadRefusal(reply, out _));
     }
 
+    // ---- a model that still writes an Answer line ------------------------------------------------------------
+
+    [Fact]
+    public void A_stray_answer_line_is_folded_into_the_details_so_nothing_says_a_question_was_asked()
+    {
+        const string reply = "Answer: Both fields get the block's own address.\nName: Initialize global list\nPurpose: Sets up a list.\nDetails:\n- Allocates.\nEvidence: the writes.";
+
+        var folded = FunctionPrompts.FoldStrayAnswer(reply);
+
+        Assert.DoesNotContain("Answer", folded);
+        Assert.StartsWith("Name:", folded);
+        Assert.Equal("Details:\n- Both fields get the block's own address.\n- Allocates.", string.Join("\n", folded.Split('\n').SkipWhile(l => l != "Details:").Take(3)));
+    }
+
+    [Fact]
+    public void Without_a_details_line_the_stray_answer_joins_the_role_or_is_dropped_and_a_normal_reply_is_untouched()
+    {
+        Assert.Equal("Name: X\nRole: Called at startup. It sets up a list.",
+            FunctionPrompts.FoldStrayAnswer("Answer: It sets up a list.\nName: X\nRole: Called at startup."));
+        Assert.Equal("Name: X", FunctionPrompts.FoldStrayAnswer("Answer: Lost without a place.\nName: X"));
+        Assert.Equal("Name: X\nPurpose: y", FunctionPrompts.FoldStrayAnswer("Name: X\nPurpose: y"));
+    }
+
+    [Fact]
+    public async Task A_reply_with_a_stray_answer_line_is_stored_without_it()
+    {
+        var llm = new ScriptedLlm("Answer: Because the list is circular.\n" + Answered, "```c\n" + Alias + "\n```");
+
+        var result = await Run(llm, "Why is the address written twice?");
+
+        Assert.DoesNotContain("Answer", result.Description.Text);
+        Assert.Contains("- Because the list is circular.", result.Description.Text);
+        Assert.Equal("Initialize global list", result.Description.Title);
+    }
+
     // ---- the request, cleaned ------------------------------------------------------------------------
 
     [Fact]
@@ -161,7 +202,7 @@ public class AskTests
         var result = await Run(llm, "Why is the address written twice?");
 
         Assert.Equal(2, llm.Requests.Count);                                              // the same two rounds as an explanation
-        Assert.StartsWith("Answer:", result.Description.Text);
+        Assert.StartsWith("Name:", result.Description.Text);                              // the usual form: no Answer line
         Assert.Equal("Initialize global list", result.Description.Title);
         Assert.Equal("Creates an empty list at startup and registers its cleanup.", result.Description.Brief);
         Assert.Equal("Why is the address written twice?", result.Description.Request);
@@ -181,7 +222,7 @@ public class AskTests
         Assert.Contains("<request>\nUse the word cleanup in names\n</request>", llm.Requests[0].Messages[^1].Content);
         var aliasUser = llm.Requests[1].Messages[^1].Content;
         Assert.Contains("<request>\nUse the word cleanup in names\n</request>", aliasUser);
-        Assert.Contains("Answer: Both fields get the block own address", aliasUser);       // the new explanation is the context of round two
+        Assert.Contains("Both fields get the block own address", aliasUser);               // the new explanation is the context of round two
         Assert.Contains("// older alias", aliasUser);                                      // the current alias is its starting point
         Assert.Contains("It can never allow a change to the code", llm.Requests[1].Messages[0].Content);
     }
