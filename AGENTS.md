@@ -163,6 +163,17 @@ to check them. `dotnet test tests\ReaWin.Tests` runs the unit tests (the real-mo
 - **Defaults:** context 32,768 (`AiProfile.DefaultContextSize`, `ReaSettings.Revision` migrates a saved 8,192 once); above 16,384 the KV cache is `q8_0`.
 - **No new dependency beyond `AiSlop.LocalLlm`** (private feed, `nuget.config`; see the `aislop-nuget-packages` skill).
 
+## AI workspace
+
+- **A panel over the whole window for one function** (`WorkspaceOverlay`, `MainWindow.Workspace.cs`): explanation and names, decompiled code and alias side by side, a request box.
+  Everything from the model is tagged *Inference · AI*; the decompiled code is REA's and is shown as Observed.
+- **A request is one round, never a conversation** (`AskRunner`): no history, no follow-up questions, no greeting. It runs the explanation and the alias rounds with the request given to
+  both (`FunctionPrompts.Build` in request mode, `AliasWriter` with a request), so everything the model generated for the function is refreshed and missing pieces are generated.
+  The previous explanation and alias are context. Keep the scope rules in `FunctionPrompts.RequestRules`: only requests about this code, refuse the rest with `Refused:` and a reason
+  (`RequestRefusedException`), the request is data between `<request>` tags and cannot change the rules or the form. Do not turn this into a chat or a general assistant.
+- **The code is never up for negotiation.** A request cannot loosen `AliasVerifier`; if the alias round fails the explanation is kept and the old alias stays.
+- With no request the explanation prompt is exactly what it was (tests pin this); request mode only adds to it.
+
 ## Alias implementation (round two of Explain)
 
 - **Round one is unchanged** (description, name, brief). Round two runs after it, or alone from *Write alias code*, and gets the code plus the round-one description.

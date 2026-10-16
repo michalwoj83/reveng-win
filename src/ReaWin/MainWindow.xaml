@@ -281,6 +281,8 @@
                                                     Visibility="Collapsed" Margin="0,0,8,0" Click="AiStop_Click" />
                                             <Button DockPanel.Dock="Left" x:Name="AliasButton" ToolTipService.ShowOnDisabled="True" Content="Write alias code" Style="{StaticResource TextButton}" MinHeight="28"
                                                     IsEnabled="False" Margin="0,0,8,0" Click="AliasButton_Click" />
+                                            <Button DockPanel.Dock="Left" x:Name="WorkspaceButton" ToolTipService.ShowOnDisabled="True" Content="AI workspace" Style="{StaticResource TonalButton}" IsEnabled="False" Margin="0,0,8,0" Click="WorkspaceButton_Click"
+                                                    ToolTip="Open the AI workspace for this function: its explanation, the alias code beside the decompiled code, and a box to ask about the code." />
                                             <Button DockPanel.Dock="Left" x:Name="ShowInGraphButton" ToolTipService.ShowOnDisabled="True" Content="Show in graph" Style="{StaticResource TextButton}" MinHeight="28"
                                                     IsEnabled="False" Margin="0,0,8,0" Click="ShowInGraph_Click"
                                                     ToolTip="Open this function in the Graph tab: who calls it and what it calls." />
@@ -453,5 +455,113 @@
                 </StackPanel>
             </StatusBarItem>
         </StatusBar>
+
+        <!-- The AI workspace: one function, everything the AI generated for it, and a box for a request. Covers the whole window (all rows). -->
+        <Grid x:Name="WorkspaceOverlay" KeyboardNavigation.TabNavigation="Cycle" KeyboardNavigation.ControlTabNavigation="Cycle" Grid.Row="0" Grid.RowSpan="4" Panel.ZIndex="20" Visibility="Collapsed" Background="{DynamicResource CanvasBrush}">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <Border Grid.Row="0" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource LineBrush}" BorderThickness="0,0,0,1" Padding="16,0" Height="56">
+                <DockPanel LastChildFill="False">
+                    <Button DockPanel.Dock="Right" x:Name="WsCloseButton" Content="Close  (Esc)" VerticalAlignment="Center" Click="WsClose_Click"
+                            ToolTip="Back to the Functions tab. Anything still running keeps running." AutomationProperties.Name="Close the AI workspace" />
+                    <TextBlock DockPanel.Dock="Left" Text="AI workspace" FontSize="16" FontWeight="Bold" VerticalAlignment="Center" />
+                    <TextBlock DockPanel.Dock="Left" x:Name="WsFunctionText" Margin="16,0,0,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                               FontFamily="{StaticResource MonoFont}" ToolTip="The function this workspace is about: the name REA reported and its address." />
+                </DockPanel>
+            </Border>
+
+            <Grid Grid.Row="1" Margin="12,12,12,8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="4*" MinWidth="260" />
+                    <ColumnDefinition Width="12" />
+                    <ColumnDefinition Width="5*" MinWidth="240" />
+                    <ColumnDefinition Width="12" />
+                    <ColumnDefinition Width="5*" MinWidth="240" />
+                </Grid.ColumnDefinitions>
+
+                <!-- 1. the explanation and the names -->
+                <Border Grid.Column="0" Style="{StaticResource Pane}" Padding="14">
+                    <DockPanel>
+                        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal">
+                            <TextBlock Text="Explanation" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,10,0" />
+                            <Border Style="{StaticResource Pill}" Background="Transparent" BorderThickness="1" BorderBrush="{DynamicResource WarnBrush}"
+                                    ToolTip="Written by the local model from the code and its context. An inference, not something REA observed.">
+                                <TextBlock Text="Inference · AI" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource WarnBrush}" />
+                            </Border>
+                        </StackPanel>
+                        <StackPanel DockPanel.Dock="Top" Margin="0,10,0,0">
+                            <TextBlock x:Name="WsAliasName" TextWrapping="Wrap" ToolTip="The function name in the alias code: a code identifier. REA's own name is shown at the top." />
+                            <TextBlock x:Name="WsTitle" TextWrapping="Wrap" Margin="0,2,0,0" ToolTip="A short readable name for people to scan lists and the graph." />
+                            <TextBlock x:Name="WsBrief" TextWrapping="Wrap" Margin="0,2,0,0" ToolTip="The one sentence shown on the graph node." />
+                        </StackPanel>
+                        <TextBlock DockPanel.Dock="Top" x:Name="WsNote" Style="{StaticResource CaptionText}" Margin="0,8,0,8" />
+                        <TextBox x:Name="WsExplanationBox" Style="{StaticResource ReadingBox}" TextWrapping="Wrap"
+                                 AutomationProperties.Name="AI explanation of the function" />
+                    </DockPanel>
+                </Border>
+                <GridSplitter Grid.Column="1" HorizontalAlignment="Stretch" ResizeBehavior="PreviousAndNext" />
+
+                <!-- 2. the decompiled code, as REA returned it -->
+                <Border Grid.Column="2" Style="{StaticResource Pane}" Padding="14">
+                    <DockPanel>
+                        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,8">
+                            <TextBlock Text="Decompiled" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,10,0" />
+                            <Border Style="{StaticResource Pill}" Background="Transparent" BorderThickness="1" BorderBrush="{DynamicResource LineBrush}"
+                                    ToolTip="The code exactly as REA and Ghidra returned it. Nothing here is inferred.">
+                                <TextBlock Text="Observed · REA" FontSize="11" FontWeight="SemiBold" Style="{StaticResource MutedText}" />
+                            </Border>
+                        </StackPanel>
+                        <Border CornerRadius="10" BorderThickness="1" BorderBrush="{DynamicResource LineBrush}" Background="{DynamicResource CanvasBrush}">
+                            <TextBox x:Name="WsOriginalBox" Style="{StaticResource CodeBox}" AutomationProperties.Name="Decompiled code" />
+                        </Border>
+                    </DockPanel>
+                </Border>
+                <GridSplitter Grid.Column="3" HorizontalAlignment="Stretch" ResizeBehavior="PreviousAndNext" />
+
+                <!-- 3. the alias: the same code with readable names and comments -->
+                <Border Grid.Column="4" Style="{StaticResource Pane}" Padding="14">
+                    <DockPanel>
+                        <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                            <CheckBox DockPanel.Dock="Right" x:Name="WsLinkScroll" Content="Link scrolling" IsChecked="True" VerticalAlignment="Center"
+                                      ToolTip="Scroll the decompiled code and the alias together. The alias has comments, so the lines do not line up one to one; the two stay at the same relative position." />
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="Alias" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,10,0" />
+                                <Border Style="{StaticResource Pill}" Background="Transparent" BorderThickness="1" BorderBrush="{DynamicResource WarnBrush}"
+                                        ToolTip="The same code as the decompiled version with readable names and comments, written by the local model. The app compared them token by token: only names and comments differ.">
+                                    <TextBlock Text="Inference · AI" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource WarnBrush}" />
+                                </Border>
+                            </StackPanel>
+                        </DockPanel>
+                        <Border CornerRadius="10" BorderThickness="1" BorderBrush="{DynamicResource LineBrush}" Background="{DynamicResource CanvasBrush}">
+                            <TextBox x:Name="WsAliasBox" Style="{StaticResource CodeBox}" AutomationProperties.Name="Alias code" />
+                        </Border>
+                    </DockPanel>
+                </Border>
+            </Grid>
+
+            <!-- the request: one at a time, about this code -->
+            <Border Grid.Row="2" Style="{StaticResource Pane}" Margin="12,0,12,12" Padding="14">
+                <DockPanel>
+                    <StackPanel DockPanel.Dock="Right" Margin="14,0,0,0" Width="170">
+                        <Button x:Name="WsRunButton" Content="Apply request" Style="{StaticResource PrimaryButton}" Click="WsRun_Click" ToolTipService.ShowOnDisabled="True"
+                                IsEnabled="False" />
+                        <Button x:Name="WsStopButton" Content="Stop" Style="{StaticResource TextButton}" Margin="0,6,0,0" Visibility="Collapsed" Click="WsStop_Click" />
+                        <TextBlock Text="Ctrl+Enter applies" Style="{StaticResource CaptionText}" Margin="2,8,0,0" />
+                    </StackPanel>
+                    <TextBlock DockPanel.Dock="Top" Style="{StaticResource CaptionText}" Margin="0,0,0,6" TextWrapping="Wrap"
+                               Text="Ask about this code: one request, not a chat. The explanation, the names and the alias code are refreshed to follow it, and written if they do not exist yet. Only requests about this code are handled." />
+                    <TextBlock DockPanel.Dock="Bottom" x:Name="WsStatus" Style="{StaticResource CaptionText}" Margin="0,6,0,0" TextWrapping="Wrap"
+                               AutomationProperties.LiveSetting="Polite" />
+                    <TextBox x:Name="WsAskBox" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="64" MaxHeight="130" MaxLength="2000" VerticalScrollBarVisibility="Auto"
+                             KeyDown="WsAsk_KeyDown" TextChanged="WsAsk_Changed"
+                             ToolTip="For example: why is the second parameter checked against 0x18? / use networking terms in the names / what happens if the allocation fails? / explain the loop in the middle"
+                             AutomationProperties.Name="Request about the code" />
+                </DockPanel>
+            </Border>
+        </Grid>
     </Grid>
 </Window>

@@ -116,6 +116,8 @@ public partial class MainWindow
         AliasButton.ToolTip = aliasWhyNot ??
             "Write the same code again with readable names and comments (checked by the app against the original). Also written automatically after Explain.";
         ShowInGraphButton.IsEnabled = _hasResults && proc is { IsImport: false };
+        WorkspaceButton.IsEnabled = _hasResults && proc is { IsImport: false } && !WorkspaceOpen;
+        UpdateWorkspaceState();
         ExplainButton.ToolTip = hint;
         AiHint.Text = hint;
         AiStopButton.Visibility = _aiBusy ? Visibility.Visible : Visibility.Collapsed;
@@ -194,13 +196,11 @@ public partial class MainWindow
     }
 
     /// <summary>
-    /// Round one, unchanged: the function with its context (program card, facts, call sites, notes on the callees, written on demand)
-    /// is described. The description, its name and its brief are kept in the project at once. False when the analysis was replaced meanwhile.
+    /// The context an explanation (and a request in the AI workspace) gets: the program card, the facts, the call sites and the notes on the callees.
+    /// Always on: the callees are summarized now if that has not been done yet, and the summaries are kept in the project.
     /// </summary>
-    private async Task<bool> ExplainAsync(ILlmProvider llm, ProcedureInfo proc, string code, int generation, CancellationToken ct)
+    private async Task<FunctionContext> GatherContextAsync(ILlmProvider llm, ProcedureInfo proc, string code, CancellationToken ct)
     {
-        // context is always on: the program, how the function is called, what it calls (the callees are summarized now if
-        // that has not been done yet, and kept in the project)
         var stage = new Progress<string>(SetAiStage);
         var graph = await EnsureGraphIndexAsync(ct);
         SetAiStage("Building the program card…");
@@ -210,6 +210,16 @@ public partial class MainWindow
             graph, _summaries, _descriptions, NeighbourCodeAsync, card);
         var (context, generated) = await ContextGatherer.GatherAsync(llm, proc, code, source, CurrentAi.ContextSize, stage, ct);
         if (generated > 0) _dirty = true;
+        return context;
+    }
+
+    /// <summary>
+    /// Round one, unchanged: the function with its context (program card, facts, call sites, notes on the callees, written on demand)
+    /// is described. The description, its name and its brief are kept in the project at once. False when the analysis was replaced meanwhile.
+    /// </summary>
+    private async Task<bool> ExplainAsync(ILlmProvider llm, ProcedureInfo proc, string code, int generation, CancellationToken ct)
+    {
+        var context = await GatherContextAsync(llm, proc, code, ct);
         SetAiStage("Describing the function…");
 
         var description = await FunctionDescriber.DescribeAsync(
@@ -287,6 +297,7 @@ public partial class MainWindow
     private void AliasesChanged()
     {
         FunctionsGrid.Items.Refresh();   // the AI name column
+        RefreshWorkspace();
         if (FunctionsGrid.SelectedItem is ProcedureInfo selected) UpdateCodeView(selected);
         if (Tabs.SelectedItem == GraphTab) RebuildGraph(resetView: false);
         RefreshAiUi();
@@ -439,6 +450,7 @@ public partial class MainWindow
     private void SetAiStage(string stage)
     {
         _aiStage = stage;
+        if (_aiBusy && WorkspaceOpen) SetWsStatus(stage);
         if (_aiBusy && _llm.State != LlmState.Starting) AiHint.Text = $"{stage} ({_aiBusyName})";
         if (_aiBusy && FunctionsGrid.SelectedItem is ProcedureInfo p && p.Address == _aiBusyAddress && _llm.State != LlmState.Starting
             && AiState.Visibility == Visibility.Visible)

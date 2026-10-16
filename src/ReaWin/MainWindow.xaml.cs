@@ -1015,6 +1015,7 @@ public partial class MainWindow : Window
 
     private void OnWindowPreviewKeyDown(object sender, KeyEventArgs e)
     {
+        if (HandleWorkspaceKey(e)) { e.Handled = true; return; }
         if (e.Key == Key.B && Keyboard.Modifiers == ModifierKeys.Control)
         {
             e.Handled = true;

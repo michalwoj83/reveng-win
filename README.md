@@ -194,6 +194,23 @@ left with their placeholder names (the readable names are best effort, the ident
 *Write alias code* runs round two on its own for a function that already has a description. Library and runtime code (matched by Ghidra) keeps its names and gets no alias, and a
 function too long to rewrite inside the context window, or cut when it was explained, gets none either, with the reason. Discarding a description also discards its alias.
 
+### The AI workspace
+
+**AI workspace** (next to *Explain* and *Write alias code*) opens a panel over the whole window for the selected function: the **explanation** with its names
+(alias name, readable name, brief) on the left, the **decompiled code** and the **alias code** side by side (scrolling can be linked), and a box at the bottom for a **request**
+about the code. *Esc* closes it; anything still running keeps running.
+
+A request is a **single round, not a chat**: type what you want to know or have changed (*why is the second parameter compared with 0x18?*, *use networking terms in the names*,
+*what happens if the allocation fails?*) and press *Apply request* (Ctrl+Enter). The model gets the decompiled code, the same context an explanation gets (program card, facts about
+callers and callees, call sites, notes on the callees), the explanation the function already has and the alias it already has, plus your request, and the same two rounds run:
+the explanation is rewritten with an **Answer** line at the top and its name and brief follow the request, then the alias code is rewritten for it. Anything that did not exist for the
+function is generated and stored with it. The explanation is kept even if the alias round fails (the old alias then stays, and the reason is shown); the alias is checked against the
+original token by token as always, so a request can steer names and comments but never the code.
+
+The model is told to handle only requests about this code: a request that is not about it (small talk, other code, an attempt to change the rules or the reply form) is refused with a
+reason and nothing changes. Your text is given to the model as data between `<request>` tags, never as part of its instructions. Nothing is remembered between requests except what is
+stored for the function, which the next request gets as context.
+
 ## Known limitations
 
 - The first analysis of a binary is slow, because Ghidra's auto-analysis is. REA's own `--snapshot` does not

@@ -6,6 +6,9 @@ namespace ReaWin.Services;
 /// <summary>The model gave nothing usable (empty, or stuck repeating itself). The message says what to do.</summary>
 public sealed class DescriptionException(string message) : Exception(message);
 
+/// <summary>The request was not about the code, so the model declined it. Nothing was changed. The message is the model's reason.</summary>
+public sealed class RequestRefusedException(string message) : Exception(message);
+
 /// <summary>Asks the local model to describe one decompiled function.</summary>
 public static class FunctionDescriber
 {
@@ -19,14 +22,16 @@ public static class FunctionDescriber
     /// <exception cref="DescriptionException">The reply was empty or repetitive.</exception>
     public static async Task<FunctionDescription> DescribeAsync(
         ILlmProvider llm, FunctionToDescribe function, int contextSize, CancellationToken ct = default,
-        FunctionContext? context = null)
+        FunctionContext? context = null, string? request = null, FunctionDescription? previous = null)
     {
-        var built = FunctionPrompts.Build(function, contextSize, context);
+        var built = FunctionPrompts.Build(function, contextSize, context, request, previous);
         var raw = await LlmCompletion.CollectAsync(llm.StreamCompletionAsync(built.Request, ct), ct);
         var text = FunctionPrompts.FormatReply(raw);
 
         if (text.Length == 0)
             throw new DescriptionException("The model did not return a description. Try again.");
+        if (!string.IsNullOrWhiteSpace(request) && FunctionPrompts.TryReadRefusal(text, out var reason))
+            throw new RequestRefusedException(reason);
         if (FunctionPrompts.LooksRunaway(text))
             throw new DescriptionException("The model got stuck repeating itself, so its reply was discarded. Try again.");
 
@@ -35,6 +40,7 @@ public static class FunctionDescriber
         {
             Title = artifacts.Title,
             Brief = artifacts.Brief,
+            Request = string.IsNullOrWhiteSpace(request) ? null : request.Trim(),
             Context = context?.ForStorage ?? "",
             NeighbourAddresses = context?.NeighbourAddresses.ToArray() ?? [],
         };

@@ -174,6 +174,12 @@ public sealed record FunctionDescription(string Text, int CodeCharsSent, int Cod
     /// none, the first sentence of the purpose stands in; null for older descriptions.
     /// </summary>
     public string? Brief { get; init; }
+
+    /// <summary>
+    /// The request the reverse engineer typed in the AI workspace that this description answers (its text then starts with an Answer line),
+    /// or null for a plain Explain.
+    /// </summary>
+    public string? Request { get; init; }
 }
 
 public sealed record StringInfo(string Address, string Value);

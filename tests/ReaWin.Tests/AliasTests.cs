@@ -326,25 +326,6 @@ public class AliasTests
 
     // ---- the whole round with a scripted model ---------------------------------------------------------
 
-    private sealed class ScriptedLlm(params string[] replies) : ILlmProvider
-    {
-        private int _next;
-        public List<LlmRequest> Requests { get; } = new();
-        public string Name => "scripted";
-        public string? Fault => null;
-        public LlmState State => LlmState.Ready;
-        public event Action? StateChanged { add { } remove { } }
-        public Task<LlmAvailability> CheckAsync(CancellationToken cancellationToken = default) => Task.FromResult(new LlmAvailability(true, null));
-        public Task WarmUpAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
-        public IAsyncEnumerable<string> StreamCompletionAsync(LlmRequest request, CancellationToken cancellationToken = default)
-        {
-            Requests.Add(request);
-            return One(replies[Math.Min(_next++, replies.Length - 1)]);
-        }
-        private static async IAsyncEnumerable<string> One(string text) { await Task.Yield(); yield return text; }
-        public void Dispose() { }
-    }
-
     [Fact]
     public async Task A_faithful_reply_becomes_the_alias_on_the_first_try()
     {
