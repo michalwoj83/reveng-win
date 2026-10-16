@@ -1,0 +1,23 @@
+<!-- Semantic color tokens, dark theme. Same keys as Tokens.Light.xaml. -->
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <SolidColorBrush x:Key="CanvasBrush" Color="#0C1020" />
+    <SolidColorBrush x:Key="SurfaceBrush" Color="#171D31" />
+    <SolidColorBrush x:Key="TextBrush" Color="#F7F8FC" />
+    <SolidColorBrush x:Key="MutedBrush" Color="#98A0B8" />
+    <SolidColorBrush x:Key="LineBrush" Color="#262E48" />
+    <SolidColorBrush x:Key="ControlBorderBrush" Color="#646D8A" />
+    <SolidColorBrush x:Key="PrimaryBrush" Color="#6654F5" />
+    <SolidColorBrush x:Key="PrimaryHoverBrush" Color="#5140D8" />
+    <SolidColorBrush x:Key="OnPrimaryBrush" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="AccentTextBrush" Color="#8F82FF" />
+    <SolidColorBrush x:Key="TintBrush" Color="#298F82FF" />
+    <SolidColorBrush x:Key="FocusBrush" Color="#8F82FF" />
+    <SolidColorBrush x:Key="LiveBrush" Color="#42D7E8" />
+    <SolidColorBrush x:Key="OkBrush" Color="#4ADE9B" />
+    <SolidColorBrush x:Key="OkBgBrush" Color="#1F4ADE9B" />
+    <SolidColorBrush x:Key="WarnBrush" Color="#F2B44E" />
+    <SolidColorBrush x:Key="WarnBgBrush" Color="#1FF2B44E" />
+    <SolidColorBrush x:Key="ErrBrush" Color="#FF7B8F" />
+    <SolidColorBrush x:Key="ErrBgBrush" Color="#1FFF7B8F" />
+</ResourceDictionary>

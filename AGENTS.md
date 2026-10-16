@@ -21,7 +21,10 @@ src/ReaWin/
   Services/ProjectLibrary.cs app project folder: `.reaproj` + small `.json` catalog entry, keyed by name + SHA-256
   Services/JavaLocator.cs   find installed JDKs from registry/folders/PATH (reads `release`, never runs java)
   Services/GhidraLocator.cs validate a Ghidra release folder by file layout
-  SettingsWindow.xaml(.cs)  pick the Ghidra folder and a JDK 21+
+  SettingsWindow.xaml(.cs)  pick the Ghidra folder, a JDK 21+, and the appearance
+  ThemeManager.cs           light/dark/follow-Windows: swaps the token dictionary, dark title bar
+  Themes/Tokens.*.xaml      semantic color brushes (light, dark); same keys in both
+  Themes/Controls.xaml      control templates and shared styles (buttons, tabs, grids, lists, scroll bars…)
   Models/Models.cs          records shared across layers
 ```
 
@@ -85,6 +88,20 @@ to check them. There is no automated test project yet. Verify changes by buildin
 - No new NuGet packages without a clear need. The project currently has none.
 - The WPF SDK omits `System.IO` from implicit usings; the csproj adds it.
 - Do not read, load, or execute scanned binaries. Only parse headers.
+
+## Look and feel (Ai.Slop.AI visual system)
+
+- Product name in the UI is **Reverse.Engineer.AI**. Ai.Slop.AI appears only as the publisher line in Settings → About.
+- Colors come from the semantic brushes in `Themes/Tokens.*.xaml` through `DynamicResource` (`SurfaceBrush`, `TextBrush`,
+  `PrimaryBrush`, `LiveBrush`, `ErrBrush`…). No literal hex or `Brushes.*` in views or code-behind; in code use
+  `SetResourceReference`. Add a token to both theme files or to neither.
+- One violet `PrimaryButton` per region; everything else is outlined, tonal or text. Violet means actions and selection,
+  cyan (`LiveBrush`) only means work in progress.
+- State is an icon plus words (✓ ready, ◔ working, ! setup, ✕ failed), never color alone.
+- Keep REA's facts and any AI output visibly apart: REA content is "Observed · REA"; AI output, when it exists, goes in its
+  own panel tagged as inference. Do not add AI controls that look wired when they are not (they stay disabled until real).
+- Performance: no shadows, blur or effects on lists, grids or the code pane. Custom templates must keep row virtualization.
+- Custom `TabControl` templates must keep `PART_SelectedContentHost`, or UI Automation cannot see the tab content.
 
 ## Adding a feature
 

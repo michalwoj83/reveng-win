@@ -109,7 +109,9 @@ public sealed record OverviewResult(
     IReadOnlyList<SegmentInfo> Segments,
     IReadOnlyList<string> Limitations);
 
-public sealed record ReaSettings(string GhidraInstallDir, string JavaHome, string ReaScript, string NodeExe);
+/// <summary>User settings. <paramref name="Theme"/> is "system" (follow Windows), "light" or "dark".</summary>
+public sealed record ReaSettings(string GhidraInstallDir, string JavaHome, string ReaScript, string NodeExe,
+    string Theme = "system");
 
 /// <summary>A JDK found on disk. The version comes from its `release` file; java.exe is never run.</summary>
 public sealed record JavaInstall(string Home, int Major, string Version, string Vendor, bool Is64Bit)

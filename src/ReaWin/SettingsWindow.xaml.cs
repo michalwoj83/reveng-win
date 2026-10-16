@@ -22,8 +22,15 @@ public partial class SettingsWindow : Window
         _current = current;
         Result = current;
 
+        ThemeManager.Attach(this);
         GhidraBox.Text = current.GhidraInstallDir;
         ReaBox.Text = current.ReaScript;
+        (current.Theme switch
+        {
+            ThemeManager.Light => ThemeLightRadio,
+            ThemeManager.Dark => ThemeDarkRadio,
+            _ => ThemeSystemRadio,
+        }).IsChecked = true;
         LoadJavaList(current.JavaHome);
         ShowGhidraStatus();
         _loading = false;
@@ -52,8 +59,14 @@ public partial class SettingsWindow : Window
     {
         var info = GhidraLocator.Inspect(GhidraBox.Text);
         var warn = !info.IsValid || (info.Version.Length > 0 && !info.Version.StartsWith("12.1", StringComparison.Ordinal));
-        GhidraStatus.Text = info.Message;
-        GhidraStatus.Foreground = warn ? Brushes.Firebrick : Brushes.SeaGreen;
+        SetStatus(GhidraStatus, info.Message, ok: !warn);
+    }
+
+    /// <summary>A status line with an icon and words, in the theme's success or error color (never color alone).</summary>
+    private static void SetStatus(TextBlock target, string text, bool ok)
+    {
+        target.Text = (ok ? "✓ " : "✕ ") + text;
+        target.SetResourceReference(TextBlock.ForegroundProperty, ok ? "OkBrush" : "ErrBrush");
     }
 
     // ---- Java -----------------------------------------------------------------
@@ -82,8 +95,7 @@ public partial class SettingsWindow : Window
         var install = JavaLocator.Inspect(dialog.FolderName);
         if (install is null)
         {
-            JavaStatus.Text = "That folder is not a JDK (bin\\java.exe and bin\\javac.exe are required).";
-            JavaStatus.Foreground = Brushes.Firebrick;
+            SetStatus(JavaStatus, "That folder is not a JDK (bin\\java.exe and bin\\javac.exe are required).", ok: false);
             return;
         }
 
@@ -104,15 +116,13 @@ public partial class SettingsWindow : Window
     {
         if (JavaCombo.SelectedItem is JavaInstall j)
         {
-            JavaStatus.Text = $"Selected: {j.Home}";
-            JavaStatus.Foreground = Brushes.SeaGreen;
+            SetStatus(JavaStatus, $"Selected: {j.Home}", ok: true);
         }
         else
         {
-            JavaStatus.Text = count == 0
+            SetStatus(JavaStatus, count == 0
                 ? $"No JDK found. Install JDK {JavaInstall.MinimumMajor}+ (for example Eclipse Temurin) or use Browse…."
-                : $"No JDK {JavaInstall.MinimumMajor}+ found among the {count} detected. Install one or use Browse….";
-            JavaStatus.Foreground = Brushes.Firebrick;
+                : $"No JDK {JavaInstall.MinimumMajor}+ found among the {count} detected. Install one or use Browse….", ok: false);
         }
     }
 
@@ -145,7 +155,10 @@ public partial class SettingsWindow : Window
             ghidra.IsValid ? ghidra.Dir : GhidraBox.Text.Trim(),
             (JavaCombo.SelectedItem as JavaInstall)?.Home ?? "",
             ReaBox.Text.Trim(),
-            _current.NodeExe);
+            _current.NodeExe,
+            ThemeLightRadio.IsChecked == true ? ThemeManager.Light
+                : ThemeDarkRadio.IsChecked == true ? ThemeManager.Dark
+                : ThemeManager.FollowWindows);
         DialogResult = true;
     }
 }

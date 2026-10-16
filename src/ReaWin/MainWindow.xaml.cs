@@ -31,6 +31,14 @@ public partial class MainWindow : Window
     private CancellationTokenSource? _cts;
     private ReaSettings _settings;
 
+    // What the header chip and the empty-state panel say. They are derived, never stored.
+    private bool _setupOk;             // Ghidra folder and JDK pass the same checks as the Settings dialog
+    private bool _hasResults;          // something from REA is on screen
+    private bool _analyzing;           // an analysis (not just any operation) is running
+    private bool _lastError;
+    private string _lastErrorText = "";
+    private BinaryItem? _lastItem;     // what "Retry analysis" runs again
+
     // One Ghidra session per analyzed binary. Decompiled code is cached by address as REA returned it.
     private ReaSession? _session;
     private Task<ReaSession?>? _sessionStart;
@@ -45,7 +53,9 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         _settings = LoadSettings();
-        ShowSettingsSummary();
+        ThemeManager.Attach(this);
+        ThemeManager.Apply(_settings.Theme);
+        UpdateSetupState();
         RefreshProjectList(null);
         if (ProjectsList.Items.Count > 0) LeftTabs.SelectedItem = ProjectsTab;
         Closing += (_, _) =>
@@ -64,18 +74,137 @@ public partial class MainWindow : Window
         if (dialog.ShowDialog() != true) return;
         _settings = dialog.Result;
         SaveSettings();
-        ShowSettingsSummary();
+        ThemeManager.Apply(_settings.Theme);
+        UpdateSetupState();
     }
 
-    private void ShowSettingsSummary()
+    /// <summary>Re-checks the Ghidra folder and JDK with the same rules as the Settings dialog.</summary>
+    private void UpdateSetupState()
     {
-        var ghidra = string.IsNullOrWhiteSpace(_settings.GhidraInstallDir) ? "not set" : _settings.GhidraInstallDir;
-        var java = string.IsNullOrWhiteSpace(_settings.JavaHome) ? "not set" : _settings.JavaHome;
-        SettingsSummary.Text = $"Ghidra: {ghidra}   |   Java: {java}";
-        SettingsSummary.Foreground = string.IsNullOrWhiteSpace(_settings.GhidraInstallDir) ||
-                                     string.IsNullOrWhiteSpace(_settings.JavaHome)
-            ? System.Windows.Media.Brushes.Firebrick
-            : System.Windows.Media.Brushes.Gray;
+        _setupOk = GhidraLocator.Inspect(_settings.GhidraInstallDir).IsValid &&
+                   JavaLocator.Inspect(_settings.JavaHome) is { IsSupported: true };
+        RefreshChrome();
+    }
+
+    private void RefreshChrome()
+    {
+        UpdateStatusChip();
+        UpdateEmptyState();
+    }
+
+    /// <summary>The header chip: an icon and words for each state, so colour is never the only signal.</summary>
+    private void UpdateStatusChip()
+    {
+        string glyph, text, glyphBrush, textBrush, bg;
+        if (!_setupOk)
+            (glyph, text, glyphBrush, textBrush, bg) = ("!", "Setup needed", "WarnBrush", "WarnBrush", "WarnBgBrush");
+        else if (_cts is not null)
+            (glyph, text, glyphBrush, textBrush, bg) = ("◔", _analyzing ? "Analyzing" : "Working", "LiveBrush", "TextBrush", "TintBrush");
+        else if (_bulkCts is not null)
+            (glyph, text, glyphBrush, textBrush, bg) = ("◔", "Decompiling", "LiveBrush", "TextBrush", "TintBrush");
+        else if (_lastError)
+            (glyph, text, glyphBrush, textBrush, bg) = ("✕", "Last run failed", "ErrBrush", "ErrBrush", "ErrBgBrush");
+        else
+            (glyph, text, glyphBrush, textBrush, bg) = ("✓", "Ghidra ready", "OkBrush", "OkBrush", "OkBgBrush");
+
+        StatusChipGlyph.Text = glyph;
+        StatusChipText.Text = text;
+        StatusChipGlyph.SetResourceReference(TextBlock.ForegroundProperty, glyphBrush);
+        StatusChipText.SetResourceReference(TextBlock.ForegroundProperty, textBrush);
+        StatusChip.SetResourceReference(Border.BackgroundProperty, bg);
+    }
+
+    /// <summary>
+    /// Explains why the result tabs are blank and offers the one useful next step. Hidden as soon as there
+    /// are results, and while the Log tab is open so errors stay readable.
+    /// </summary>
+    private void UpdateEmptyState()
+    {
+        var show = !_hasResults && !ReferenceEquals(Tabs.SelectedItem, LogTab);
+        EmptyState.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+        if (!show) return;
+
+        EmptyBar.Visibility = Visibility.Collapsed;
+        EmptyPrimary.Visibility = Visibility.Visible;
+        EmptySecondary.Visibility = Visibility.Collapsed;
+
+        if (!_setupOk)
+        {
+            EmptyTitle.Text = "Ghidra isn't set up yet";
+            EmptyBody.Text = "This app needs a Ghidra 12.1.x release folder and a 64-bit JDK 21 or newer. Pick both in Settings.";
+            SetEmptyAction(EmptyPrimary, "Open Settings", "settings");
+        }
+        else if (_analyzing)
+        {
+            EmptyTitle.Text = $"Analyzing {_lastItem?.Name}";
+            EmptyBody.Text = "Ghidra imports and analyzes the file once, usually 1 to 3 minutes. " +
+                             "After that, functions and code open instantly. You can keep browsing the Binaries list.";
+            EmptyBar.Visibility = Visibility.Visible;
+            EmptyPrimary.Visibility = Visibility.Collapsed;
+            SetEmptyAction(EmptySecondary, "Cancel", "cancel");
+        }
+        else if (_lastError)
+        {
+            EmptyTitle.Text = "Analysis failed";
+            EmptyBody.Text = $"{_lastErrorText}\n\nDetails are in the Log tab. Nothing from earlier analyses was lost.";
+            if (_lastItem is not null) SetEmptyAction(EmptyPrimary, "Retry analysis", "retry");
+            else EmptyPrimary.Visibility = Visibility.Collapsed;
+            SetEmptyAction(EmptySecondary, "Open Log", "log");
+        }
+        else
+        {
+            EmptyTitle.Text = "Nothing analyzed yet";
+            EmptyBody.Text = "Select an application folder, pick a binary and choose Analyze selected. " +
+                             "Or open a stored project from the Projects tab.";
+            SetEmptyAction(EmptyPrimary, "Select app folder…", "browse");
+        }
+    }
+
+    private static void SetEmptyAction(Button button, string text, string action)
+    {
+        button.Content = text;
+        button.Tag = action;
+        button.Visibility = Visibility.Visible;
+    }
+
+    private async void EmptyPrimary_Click(object sender, RoutedEventArgs e)
+    {
+        switch (EmptyPrimary.Tag as string)
+        {
+            case "settings": Settings_Click(sender, e); break;
+            case "browse": Browse_Click(sender, e); break;
+            case "retry" when _lastItem is not null: await AnalyzeAsync(_lastItem); break;
+        }
+    }
+
+    private void EmptySecondary_Click(object sender, RoutedEventArgs e)
+    {
+        switch (EmptySecondary.Tag as string)
+        {
+            case "cancel": Cancel_Click(sender, e); break;
+            case "log": Tabs.SelectedItem = LogTab; break;
+        }
+    }
+
+    private void Tabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        // Selection events from the grids inside the tabs bubble up to here; only the tab strip matters.
+        if (ReferenceEquals(e.OriginalSource, Tabs)) UpdateEmptyState();
+    }
+
+    /// <summary>REA reports failures as JSON; the readable part is its "message".</summary>
+    private static string ReadableError(string text)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(text);
+            var root = doc.RootElement;
+            var message = ReaClient.Str(root, "message");
+            var code = ReaClient.Str(root, "code");
+            if (message.Length > 0) return code.Length > 0 ? $"{message} ({code})" : message;
+        }
+        catch (JsonException) { }
+        return FirstLine(text);
     }
 
     // ---- 1. choose a directory -------------------------------------------------
@@ -107,7 +236,7 @@ public partial class MainWindow : Window
 
             var electron = EntryRanker.LooksLikeElectron(_root);
             JsButton.Visibility = electron ? Visibility.Visible : Visibility.Collapsed;
-            BannerText.Visibility = electron ? Visibility.Visible : Visibility.Collapsed;
+            BannerBox.Visibility = electron ? Visibility.Visible : Visibility.Collapsed;
             BannerText.Text = "This looks like an Electron app (resources\\app.asar). The native .exe is mostly the " +
                               "Chromium shell; the application logic is JavaScript. Use \"Analyze as JavaScript app\".";
 
@@ -186,6 +315,9 @@ public partial class MainWindow : Window
         DisposeSession();
         ClearAnalysis();
 
+        _lastItem = item;
+        _lastError = false;
+        _analyzing = true;
         using var cts = BeginWork($"Running REA + Ghidra on {item.Name}…");
         try
         {
@@ -195,6 +327,7 @@ public partial class MainWindow : Window
                 var client = new ReaClient(CurrentSettings());
                 using var doc = await client.RunJsonAsync(cts.Token, "inspect-managed-artifact", path);
                 OverviewBox.Text = Pretty(doc);
+                _hasResults = true;
                 Tabs.SelectedItem = OverviewTab;
                 StatusText.Text = "Managed inspection complete.";
                 return;
@@ -233,6 +366,7 @@ public partial class MainWindow : Window
             ApplyFunctionFilter();
             ApplyStringFilter();
             SaveProjectButton.IsEnabled = true;
+            _hasResults = true;
             Tabs.SelectedItem = FunctionsTab;
             StatusText.Text = $"Done: {_procedures.Count(p => !p.IsImport)} functions, {_strings.Count} strings. " +
                               "Select a function to read its code.";
@@ -242,7 +376,11 @@ public partial class MainWindow : Window
         }
         catch (OperationCanceledException) { StatusText.Text = "Cancelled."; }
         catch (ReaException ex) { ShowFailure(ex); }
-        finally { EndWork(); }
+        finally
+        {
+            _analyzing = false;
+            EndWork();
+        }
     }
 
     private static string FormatOverview(string name, OverviewResult o, List<ProcedureInfo> procedures)
@@ -317,7 +455,7 @@ public partial class MainWindow : Window
         }
         if (_decompiled.TryGetValue(proc.Address, out var cached))
         {
-            CodeBox.Text = cached;
+            CodeBox.Text = ForDisplay(cached);
             return;
         }
         if (_decompileErrors.TryGetValue(proc.Address, out var knownError))
@@ -341,7 +479,7 @@ public partial class MainWindow : Window
 
             _decompiled[proc.Address] = code;
             _dirty = true;
-            if (version == _selectionVersion) CodeBox.Text = code;
+            if (version == _selectionVersion) CodeBox.Text = ForDisplay(code);
         }
         catch (ReaException ex)
         {
@@ -420,6 +558,7 @@ public partial class MainWindow : Window
         BulkText.Text = $"Decompiling 0/{total}";
         BulkPanel.Visibility = Visibility.Visible;
         CancelButton.IsEnabled = true;
+        RefreshChrome();
         try
         {
             for (var i = 0; i < total; i += BulkChunk)
@@ -452,6 +591,7 @@ public partial class MainWindow : Window
             _bulkCts?.Dispose();
             _bulkCts = null;
             CancelButton.IsEnabled = _cts is not null;
+            RefreshChrome();
         }
         await StoreProjectAsync();   // whatever was decompiled is kept, even if the run was stopped
     }
@@ -476,6 +616,7 @@ public partial class MainWindow : Window
         _overview = null;
         _projectId = null;
         _dirty = false;
+        _hasResults = false;
         _procedures = new();
         _strings = new();
         _decompiled.Clear();
@@ -486,7 +627,11 @@ public partial class MainWindow : Window
         CodeBox.Text = "";
         CodeHeader.Text = "Select a function to see its decompiled code.";
         SaveProjectButton.IsEnabled = false;
+        RefreshChrome();
     }
+
+    /// <summary>REA's pseudocode starts with blank lines; skip them on screen. The cached and saved text stays as REA sent it.</summary>
+    private static string ForDisplay(string code) => code.TrimStart('\r', '\n');
 
     private static string FirstLine(string text)
     {
@@ -664,6 +809,8 @@ public partial class MainWindow : Window
             ApplyFunctionFilter();
             ApplyStringFilter();
             SaveProjectButton.IsEnabled = true;
+            _hasResults = true;
+            _lastError = false;
             Tabs.SelectedItem = FunctionsTab;
             EndWork();
         }
@@ -723,6 +870,7 @@ public partial class MainWindow : Window
         {
             using var doc = await client.RunJsonAsync(cts.Token, "analyze-javascript-application", _root);
             OverviewBox.Text = Pretty(doc);
+            _hasResults = true;
             Tabs.SelectedItem = OverviewTab;
             StatusText.Text = "JavaScript analysis complete (raw evidence shown in Overview).";
         }
@@ -750,6 +898,7 @@ public partial class MainWindow : Window
                 sb.AppendLine($"  [{(ok ? "ok" : "FAIL")}] {name}: {detail}");
             }
             Log(sb.ToString());
+            _lastError = false;
             Tabs.SelectedItem = LogTab;
             StatusText.Text = "Doctor finished; see Log.";
         }
@@ -774,6 +923,7 @@ public partial class MainWindow : Window
         BrowseButton.IsEnabled = RescanButton.IsEnabled = AnalyzeButton.IsEnabled = AnalyzeRecommendedButton.IsEnabled = false;
         OpenProjectButton.IsEnabled = SaveProjectButton.IsEnabled = false;
         CancelButton.IsEnabled = true;
+        RefreshChrome();
         return _cts;
     }
 
@@ -787,13 +937,18 @@ public partial class MainWindow : Window
         RescanButton.IsEnabled = !string.IsNullOrEmpty(_root);
         CancelButton.IsEnabled = _bulkCts is not null;   // the background decompile can still be stopped
         Binaries_SelectionChanged(this, null!);
+        RefreshChrome();
     }
 
     private void ShowFailure(ReaException ex)
     {
         Log($"REA failed (exit {ex.ExitCode}):\n{ex.Message}");
-        Tabs.SelectedItem = LogTab;
-        StatusText.Text = "REA reported an error; see Log. Try \"Run rea doctor\" in settings.";
+        _lastError = true;
+        _lastErrorText = ReadableError(ex.Message);
+        // With nothing on screen the empty-state panel shows the failure; otherwise go straight to the Log.
+        Tabs.SelectedItem = _hasResults ? LogTab : FunctionsTab;
+        StatusText.Text = "REA reported an error; see Log. Try \"Run rea doctor\" in the header.";
+        RefreshChrome();
     }
 
     private void Log(string text) =>
@@ -820,7 +975,8 @@ public partial class MainWindow : Window
                         string.IsNullOrWhiteSpace(saved.GhidraInstallDir) ? defaults.GhidraInstallDir : saved.GhidraInstallDir,
                         string.IsNullOrWhiteSpace(saved.JavaHome) ? defaults.JavaHome : saved.JavaHome,
                         string.IsNullOrWhiteSpace(saved.ReaScript) ? defaults.ReaScript : saved.ReaScript,
-                        "node");
+                        "node",
+                        string.IsNullOrWhiteSpace(saved.Theme) ? ThemeManager.FollowWindows : saved.Theme);
             }
         }
         catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException) { }

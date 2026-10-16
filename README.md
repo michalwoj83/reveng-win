@@ -59,6 +59,14 @@ Special cases:
 | Functions | `list_procedures`, `procedure_pseudo_code`, `batch_decompile` | program functions and imports, Ghidra's `entry` marked; the decompiled code of the selected function appears beside the list |
 | Strings | `list_strings` | every Ghidra-defined string with address |
 
+## Appearance
+
+The app uses the Ai.Slop.AI visual system: neutral surfaces, one violet accent, cyan for work in progress, and a
+header chip that says what state the analysis engine is in (*Ghidra ready*, *Analyzing*, *Decompiling*, *Setup needed*,
+*Last run failed*). When there is nothing to show, the results pane explains why and offers the next step. Light and
+dark themes are in Settings → Appearance (default: follow Windows, including the title bar). REA's facts are tagged
+*Observed · REA*; the *Explain* and *Summarize* buttons are disabled placeholders until AI features exist.
+
 ## Speed and sessions
 
 Native analysis runs through one long-lived `rea --mcp` session per binary. Ghidra imports and analyzes the file
