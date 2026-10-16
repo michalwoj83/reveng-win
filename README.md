@@ -138,6 +138,12 @@ Set it up once:
 
 then turn on *Local AI* in Settings. Notes:
 
+- **The model is reused when it is already on the PC.** Before downloading, the script looks for a copy with the pinned SHA-256 in: a file you give with
+  `-ModelFile`, the Hugging Face cache (`HF_HUB_CACHE`, `HF_HOME\hub`, `%USERPROFILE%\.cache\huggingface\hub`; where Setup and Hugging Face tools keep it),
+  an installed copy of the app (`%LocalAppData%\Programs\Reverse.Engineer.AI\ai\model`), and the script's own download folder. A copy is used only after its
+  hash matches, and it is hard-linked into place (no second 6 GB on disk) when the drive allows, otherwise copied. A `-ModelFile` that is not the pinned model
+  stops the script with the reason instead of falling back to another copy. `-SkipEngine` installs only the model, `-SkipModel` only the engine.
+
 - The model (prism-ml/Ternary-Bonsai-2-27B-gguf, PTQ1_0, Apache-2.0) **needs the PrismML build of llama.cpp**; stock llama.cpp cannot load it. The script installs
   that build. `-Engine cuda-12.4` is the maker's fallback on Windows if the default exits without a message, `-Engine cpu` works everywhere but is slow for
   a 27B model, `-Engine vulkan` has caveats on the model's known-issues page.

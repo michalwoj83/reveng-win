@@ -36,7 +36,7 @@ src/ReaWin/
   MainWindow.Graph.cs           the Graph tab: focus and history, filters, side panel, node actions (see below)
   Services/ContextBudget.cs     token estimates (decompiled C is about 2.4 chars/token with the model's vocabulary)
   MainWindow.Ai.cs          the Explain button, the AI panel, the provider lifecycle
-  scripts/Install-Ai.ps1    installs the PrismML llama.cpp build and the Bonsai model (pins in scripts/ai-pins.json)
+  scripts/Install-Ai.ps1    installs the PrismML llama.cpp build and the Bonsai model, reusing a verified copy from the Hugging Face cache, an installed app or -ModelFile (pins in scripts/ai-pins.json)
   tests/ReaWin.Tests        prompts, clean-up, settings and project compatibility, AI files; real-model test is env-gated
   installer/                ReaWin.iss + build-installer.ps1: per-user Inno Setup using the ai-tooling installer kit (pins: scripts/ai-pins.json)
   SettingsWindow.xaml(.cs)  pick the Ghidra folder, a JDK 21+, the appearance, and the local AI options
